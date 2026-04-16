@@ -1,11 +1,36 @@
 # Exercise Authoring Rules
 
-Placeholder rules for turning a candidate into a guided exercise.
+## Required Rules
 
-Future content should define:
+Exercises must:
 
-- exercise scope boundaries
-- expected learner outcomes
-- acceptable solution latitude
-- response formatting rules
+- target one primary issue
+- describe what to improve, not how to fully implement it
+- explain why the issue matters in real engineering terms
+- avoid implying a single "correct" final structure
 
+## Forbidden Rules
+
+Exercises must not:
+
+- include final refactored code
+- combine multiple major refactors into one task
+- focus on formatting-only cleanup
+
+## Output Expectations
+
+A valid exercise should provide:
+
+- a concise title
+- a short description of the refactoring target
+- a rationale tied to maintainability or readability
+- a difficulty label aligned to the rubric
+
+## Authoring Check
+
+Reject or rewrite an exercise if it:
+
+- reveals the finished design
+- turns into step-by-step implementation instructions
+- treats stylistic preference as the main issue
+- expands scope beyond the selected candidate

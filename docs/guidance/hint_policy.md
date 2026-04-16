@@ -1,11 +1,30 @@
 # Hint Policy
 
-Placeholder guidance for hint generation.
+## Hint Levels
 
-Initial intent:
+### Hint 1 - Orientation
 
-- reveal progressively
-- avoid giving away the final patch too early
-- focus on reasoning, not just mechanics
-- maintain behavior-preserving guidance
+Hint 1 should:
 
+- identify the problematic region
+- highlight the design issue
+- suggest a general direction
+
+### Hint 2 - Guidance
+
+Hint 2 should:
+
+- suggest a specific strategy such as extraction or guard clauses
+- provide structural guidance without providing the final implementation
+
+## Hard Rules
+
+Hints must:
+
+- never output full code
+- never provide step-by-step implementation
+- never reveal the final structure completely
+
+## Enforcement
+
+If a generated hint violates these rules, the system should strip or replace it rather than passing it through unchanged.

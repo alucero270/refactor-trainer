@@ -1,62 +1,368 @@
 # API Spec
 
-This document describes the scaffold-level API contract.
+## Scope
 
-## Routes
+This document defines the MVP HTTP contract for the current monolithic backend. It matches the scaffolded route layout and preserves the planning decisions from the living plan:
+
+- single-file Python ingestion only
+- provider setup before generation
+- targeted GitHub import only
+- session-scoped exercise flow
+- no repository-wide analysis
+
+All endpoints exchange JSON unless noted otherwise.
+
+## Session and Config Model
+
+- Session state may be tracked with a cookie-backed session identifier in MVP.
+- Provider configuration is local-device scoped and must not be logged.
+- GitHub access is scoped to repository browsing and single-file import for the active exercise flow.
+
+## Endpoint Summary
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Service health |
+| `POST` | `/submit-code` | Upload or paste Python code into the session |
+| `GET` | `/candidates` | Return detected candidates for a submission |
+| `POST` | `/exercise/{candidate_id}` | Generate or retrieve an exercise for one candidate |
+| `GET` | `/hints/{exercise_id}` | Reveal the next available hints for an exercise |
+| `POST` | `/submit-attempt/{exercise_id}` | Submit a refactored attempt |
+| `GET` | `/providers` | List supported provider modes |
+| `GET` | `/provider/config` | Read the current provider config |
+| `PUT` | `/provider/config` | Save the current provider config |
+| `GET` | `/provider/health` | Validate configured provider availability |
+| `GET` | `/github/connect` | Start or represent the GitHub connection flow |
+| `GET` | `/github/repos` | List accessible repositories |
+| `GET` | `/github/repo/{repo_id}/tree` | Browse a repository tree for importable files |
+| `POST` | `/github/import-file` | Import one file into the single-file workflow |
+
+## Contracts
 
 ### `GET /health`
 
-Returns application health and scaffold status.
+Response:
+
+```json
+{
+  "status": "ok",
+  "app": "refactor-trainer",
+  "scaffold": true
+}
+```
+
+Notes:
+
+- `scaffold` may remain `true` until placeholder implementations are replaced.
 
 ### `POST /submit-code`
 
-Accepts a code submission payload and returns a placeholder submission record.
+Request:
+
+```json
+{
+  "source": "paste",
+  "filename": "example.py",
+  "code": "def example():\n    pass\n"
+}
+```
+
+Rules:
+
+- `source` must be one of `upload`, `paste`, or `github`.
+- MVP accepts Python only.
+- Invalid syntax should surface a user-facing error after parsing.
+
+Response:
+
+```json
+{
+  "submission_id": "sub-123",
+  "candidate_count": 3,
+  "status": "accepted"
+}
+```
 
 ### `GET /candidates`
 
-Returns deterministic placeholder candidates for a submission.
+Query parameters:
+
+- `submission_id` (required)
+
+Response:
+
+```json
+{
+  "submission_id": "sub-123",
+  "candidates": [
+    {
+      "id": "cand-1",
+      "title": "Split a long function",
+      "smell": "LongMethod",
+      "summary": "This function mixes multiple responsibilities.",
+      "severity": "medium"
+    }
+  ]
+}
+```
+
+Rules:
+
+- Return up to 3 candidates in MVP.
+- Candidates should include line-aware metadata internally even if the scaffolded response is still minimal.
 
 ### `POST /exercise/{candidate_id}`
 
-Returns a placeholder exercise generated for a candidate.
+Path parameters:
+
+- `candidate_id` (required)
+
+Response:
+
+```json
+{
+  "exercise_id": "ex-123",
+  "candidate_id": "cand-1",
+  "instructions": "Refactor this function to improve readability and reduce responsibility overlap.",
+  "guidance_summary": "Use one primary issue and do not reveal the final structure.",
+  "status": "generated"
+}
+```
+
+Rules:
+
+- Generate one exercise per selected candidate.
+- The exercise must describe what to improve and why it matters.
+- The exercise must not include final refactored code.
 
 ### `GET /hints/{exercise_id}`
 
-Returns placeholder hints for an exercise.
+Path parameters:
+
+- `exercise_id` (required)
+
+Response:
+
+```json
+{
+  "exercise_id": "ex-123",
+  "hints": [
+    "Look at the region where responsibilities start to mix.",
+    "Consider extracting one cohesive piece of work into a helper."
+  ],
+  "guidance_summary": "Hints must stay progressive and must not reveal full code.",
+  "status": "generated"
+}
+```
+
+Rules:
+
+- Hint 2 must not be available before Hint 1.
+- Hints must not output full code or step-by-step implementation.
 
 ### `POST /submit-attempt/{exercise_id}`
 
-Returns placeholder attempt feedback.
+Path parameters:
+
+- `exercise_id` (required)
+
+Request:
+
+```json
+{
+  "attempt_code": "def refactored_example():\n    pass\n"
+}
+```
+
+Response:
+
+```json
+{
+  "exercise_id": "ex-123",
+  "accepted": true,
+  "feedback": "The targeted issue was reduced and the code still parses.",
+  "status": "evaluated"
+}
+```
+
+Rules:
+
+- MVP evaluation is deterministic and lightweight.
+- The backend must never execute submitted code.
 
 ### `GET /providers`
 
-Lists configured provider stubs.
+Response:
+
+```json
+{
+  "providers": [
+    {
+      "name": "ollama",
+      "kind": "local",
+      "supports_local": true
+    }
+  ]
+}
+```
+
+Notes:
+
+- The supported MVP provider set is Ollama, OpenAI, Anthropic, and MCP.
 
 ### `GET /provider/config`
 
-Returns current placeholder provider configuration.
+Response:
+
+```json
+{
+  "config": {
+    "default_provider": "ollama",
+    "configured_providers": ["ollama"]
+  }
+}
+```
 
 ### `PUT /provider/config`
 
-Updates placeholder provider configuration in local memory.
+Request:
+
+```json
+{
+  "config": {
+    "default_provider": "ollama",
+    "configured_providers": ["ollama", "openai"]
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "config": {
+    "default_provider": "ollama",
+    "configured_providers": ["ollama", "openai"]
+  }
+}
+```
+
+Rules:
+
+- Secrets are local-only and must never appear in logs.
+- Config updates must not imply automatic fallback between providers.
 
 ### `GET /provider/health`
 
-Runs provider health checks via the provider abstraction.
+Response:
+
+```json
+{
+  "providers": [
+    {
+      "provider": "ollama",
+      "status": "ok",
+      "message": "reachable"
+    }
+  ]
+}
+```
+
+Rules:
+
+- Health checks must return actionable failure reasons.
+- MCP must support the same core health and generation operations as other providers.
 
 ### `GET /github/connect`
 
-Placeholder entry point for future GitHub connection flow.
+Response shape:
+
+```json
+{
+  "status": "stub",
+  "message": "GitHub OAuth flow is not implemented in this scaffold."
+}
+```
+
+Rules:
+
+- This endpoint represents targeted import enablement only.
+- The MVP does not include repository synchronization or pull request flows.
 
 ### `GET /github/repos`
 
-Returns placeholder repositories.
+Response:
+
+```json
+{
+  "repos": [
+    {
+      "id": "demo-repo",
+      "name": "demo-repo",
+      "owner": "placeholder"
+    }
+  ]
+}
+```
 
 ### `GET /github/repo/{repo_id}/tree`
 
-Returns a placeholder repository tree.
+Path parameters:
+
+- `repo_id` (required)
+
+Response:
+
+```json
+{
+  "repo_id": "demo-repo",
+  "tree": [
+    {
+      "path": "src/example.py",
+      "type": "blob"
+    }
+  ]
+}
+```
+
+Rules:
+
+- MVP browsing only needs enough metadata to let the user choose one file.
 
 ### `POST /github/import-file`
 
-Returns placeholder imported file metadata.
+Request:
 
+```json
+{
+  "repo_id": "demo-repo",
+  "path": "src/example.py",
+  "ref": "HEAD"
+}
+```
+
+Response:
+
+```json
+{
+  "repo_id": "demo-repo",
+  "path": "src/example.py",
+  "content": "def example():\n    pass\n",
+  "status": "imported"
+}
+```
+
+Rules:
+
+- MVP only supports importing a single Python file into the same path used by upload and paste.
+- Imported content must be treated like any other submitted `CodeAsset`.
+
+## Error Handling
+
+Common error cases:
+
+- `400`: invalid input, unsupported file type, syntax issues, or malformed config
+- `404`: missing submission, candidate, exercise, or repository path
+- `502`: provider failure or schema-parse failure from provider output
+
+Errors should be explicit enough for the user to correct the issue without exposing secrets, raw prompts, or full code bodies.
