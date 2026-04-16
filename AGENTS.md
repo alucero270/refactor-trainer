@@ -2,16 +2,34 @@
 
 ---
 
-## 1. Repo Layout
+## Source of Truth
 
-* `backend/`: FastAPI application scaffold, provider abstractions, guidance seam, tests
-* `frontend/`: React + TypeScript application scaffold with Monaco editor placeholder
-* `docs/`: architecture notes, API spec, ADRs, prompts, repo-local guidance content
-* `.github/workflows/`: CI baseline
+Before making structural or architectural changes, consult:
+
+* docs/architecture.md
+* docs/mvp-definition.md
+* docs/product-scope.md
+* docs/adr/
+* CONTRIBUTING.md
+
+If AGENTS.md conflicts with these documents:
+
+→ stop execution
+→ surface the conflict
+→ do not resolve it independently
 
 ---
 
-## 2. Run Commands
+## Repo Layout
+
+* `backend/`: backend application, core logic, providers, tests
+* `frontend/`: UI application and interaction flow
+* `docs/`: architecture, ADRs, API spec, prompts, guidance
+* `.github/workflows/`: CI configuration
+
+---
+
+## Run Commands
 
 ### Backend
 
@@ -31,7 +49,7 @@ npm run dev
 
 ---
 
-## 3. Test Commands
+## Test Commands
 
 ```bash
 cd backend
@@ -45,47 +63,7 @@ npm run build
 
 ---
 
-## 4. Core System Identity
-
-Refactor Trainer is a:
-
-* local-first developer tool
-* guided refactoring practice system
-* structured training loop for real-world code
-
-It provides:
-
-* deterministic code analysis (heuristics)
-* structured exercise generation
-* progressive hints (no full solutions)
-* controlled AI usage via provider abstraction
-
----
-
-## 5. Architecture Constraints
-
-* Keep the system monolithic
-* Backend: Python + FastAPI
-* Frontend: React + TypeScript
-* Use provider abstraction for all model interactions
-* Treat Ollama as the reference local-first provider
-* Keep OpenAI, Anthropic, and MCP as BYOK-compatible paths
-
----
-
-## 6. Scaffold Constraints
-
-* Prefer placeholder implementations over speculative product logic
-* Preserve clean seams for:
-
-  * provider abstraction
-  * guidance retrieval
-  * future MCP-backed integrations
-* Do not prematurely optimize architecture
-
----
-
-## 7. Execution Rules
+## Execution Rules
 
 * One issue = one isolated change
 * Each issue must be independently reviewable
@@ -95,87 +73,78 @@ It provides:
 
 ---
 
-## 8. Priority Rules
+## Priority Rules
 
 When implementing:
 
-1. Follow architecture exactly
-2. Respect issue scope
-3. Preserve abstraction boundaries
+1. Respect issue scope
+2. Preserve existing abstractions
+3. Follow architecture and ADRs
 4. THEN implement functionality
 
 Do not optimize for completeness over correctness.
 
 ---
 
-## 9. AI Usage Rules
+## Implementation Rules
 
-AI is used for:
+* Do not introduce new frameworks, services, or architectural patterns without approval
+* Do not change public interfaces or contracts without explicit instruction
+* Do not bypass defined abstractions
+* Prefer the smallest valid implementation
+* Surface ambiguity rather than inventing behavior
+
+---
+
+## AI Usage Rules
+
+AI may be used for:
 
 * classification
 * exercise generation
 * hint generation
 
-AI is NOT used for:
+AI must NOT be used for:
 
-* evaluation decisions (must be deterministic)
-* system design decisions
+* deterministic evaluation decisions
+* architecture decisions
 * inventing requirements
 
-All AI interactions must go through the provider abstraction.
+All AI usage must respect defined abstractions.
 
 ---
 
-## 10. Guidance Rules
+## Guidance Rules
 
 * Exercises must target a single refactor issue
 * Hints must NOT reveal full solutions
-* Hints must be progressive (level 1 → level 2)
+* Hints must be progressive
 * Outputs must align with guidance documents
 * Avoid generic or vague explanations
 
 ---
 
-## 11. Provider Rules
-
-* All model usage must go through provider abstraction
-* No direct API calls in domain logic
-* Do not couple system behavior to a specific provider
-* Provider implementations may be stubbed in scaffold phase
-
----
-
-## 12. GitHub Integration Rules
-
-* GitHub is used for file ingestion only
-* Do not implement:
-
-  * repository sync
-  * PR automation
-  * background polling
-* Keep integration minimal and scoped to file import
-
----
-
-## 13. Validation Expectations
+## Validation Rules
 
 * Code must run successfully
-* API contracts must remain stable
-* Evaluation logic must be deterministic
+* Changes must align with issue acceptance criteria
+* Tests must reflect implemented logic
 * No placeholder logic may appear as complete implementation
 
 ---
 
-## 14. Testing Policy
+## Testing Rules
 
-* Core logic should be tested
-* Heuristics must be validated
-* AI outputs must be schema-validated
-* Hint leakage (solutions) must be prevented
+* Test deterministic system behavior, not user experience
+* Validate logic within issue scope
+* Ensure interfaces remain stable
+* Enforce constraints (no leakage, no unsafe execution)
+
+Do not fabricate misleading tests.
 
 ---
 
-## 15. Failure Handling
+## Failure Handling
 
 If an issue cannot be completed:
 
@@ -187,51 +156,62 @@ If an issue cannot be completed:
 
 ---
 
-## 16. Do-Not-Overbuild Rules
+## Do-Not-Overbuild Rules
 
-* Do not implement full GitHub OAuth or repository sync
-* Do not implement real provider SDK calls in scaffold phase
-* Do not implement real MCP transport in scaffold phase
-* Do not build cross-file or repository-wide analysis
-* Do not add hosted/shared inference
-* Do not add collaboration, accounts, or gamification
-* Do not tightly couple guidance retrieval to Strata
-* Do not fabricate deep logic in tests
-
----
-
-## 17. UNATTENDED MODE (EXPERIMENTAL)
-
-UNATTENDED MODE allows the agent to execute multiple issues sequentially without human review between issues.
-
-This mode is **NOT default behavior**.
+* Do not expand beyond MVP scope
+* Do not introduce undefined features
+* Do not add platform features (accounts, collaboration, etc.)
+* Do not introduce background workers or queues
+* Do not add unnecessary infrastructure
+* Do not tightly couple external systems prematurely
+* Do not over-engineer
 
 ---
 
-### 17.1 Purpose
+## UNATTENDED MODE (EXPERIMENTAL)
+
+UNATTENDED MODE allows the agent to execute multiple issues sequentially without human review.
+
+This mode is **disabled by default** and must be explicitly enabled.
+
+---
+
+### Purpose
 
 To evaluate whether the agent can:
 
 * follow structured plans
-* maintain architectural boundaries
-* produce correct incremental work
-* operate without supervision
+* respect issue boundaries
+* maintain abstraction integrity
+* produce correct incremental changes
+* detect and stop on failure
 
 ---
 
-### 17.2 Execution Model (Stacked PR Workflow)
+## Execution Loop
 
-When UNATTENDED MODE is enabled:
+For a selected milestone:
 
-* A milestone is selected
-* Issues are executed in strict order
+For each issue, in strict order:
 
-Branch structure:
+1. Create a branch from the previous issue branch
+2. Implement only the current issue
+3. Run validation checks
+4. If validation passes → open PR
+5. If validation fails → stop execution
+
+The agent MUST NOT proceed to the next issue unless validation passes.
+
+---
+
+## Branching Model
+
+Branches:
 
 * `milestone/mX`
 * `issue/mX-01`
-* `issue/mX-02` (based on previous branch)
-* `issue/mX-03` (based on previous branch)
+* `issue/mX-02` (from previous issue branch)
+* `issue/mX-03` (from previous issue branch)
 
 PR targets:
 
@@ -241,9 +221,109 @@ PR targets:
 
 ---
 
-### 17.3 Rules
+## Validation Gate (MANDATORY)
 
-* Each issue MUST build on the previous issue
+Before opening a PR, ALL must pass:
+
+### 1. Build & Runtime
+
+* backend starts successfully
+* frontend builds successfully (if affected)
+
+### 2. Tests
+
+* all existing tests pass
+* new tests (if required) pass
+
+### 3. Scope Enforcement
+
+* changes match issue scope
+* no unrelated files modified
+* no future features introduced
+
+### 4. Contract Integrity
+
+* API contracts preserved unless required
+* abstractions not bypassed
+
+### 5. Safety Constraints
+
+* no execution of user code
+* no hint solution leakage
+* no secrets exposed
+
+If ANY check fails:
+
+→ stop execution
+
+---
+
+## PR Requirements (UNATTENDED)
+
+Each PR must:
+
+* reference exactly one issue
+* include only relevant changes
+* follow `type(scope): description` naming
+* pass all validation gates
+
+PR description must include:
+
+* issue reference
+* summary of changes
+* confirmation that validation passed
+
+---
+
+## Failure Classification
+
+If execution fails, classify as:
+
+* BUILD_FAILURE
+* TEST_FAILURE
+* SCOPE_VIOLATION
+* CONTRACT_VIOLATION
+* SAFETY_VIOLATION
+* UNKNOWN
+
+Then:
+
+* stop execution
+* do not proceed
+* do not modify previous branches
+
+---
+
+## Stop Conditions
+
+Execution MUST stop if:
+
+* validation fails
+* scope is unclear
+* dependency is missing
+* architecture conflict detected
+* contracts cannot be satisfied
+
+Do NOT:
+
+* skip issues
+* expand scope
+* partially complete work
+
+---
+
+## Completion Behavior
+
+When all issues are complete:
+
+* leave full PR stack open
+* do NOT merge automatically
+* require human review
+
+---
+
+## Execution Constraints
+
 * Do NOT skip issues
 * Do NOT reorder execution
 * Do NOT parallelize work
@@ -251,48 +331,38 @@ PR targets:
 
 ---
 
-### 17.4 Failure Behavior
+## Priority (UNATTENDED MODE)
 
-If any issue fails:
-
-* stop execution immediately
-* do not proceed to next issue
-* do not modify previous branches
-
----
-
-### 17.5 Completion
-
-When all issues are complete:
-
-* leave full PR stack open
-* do not merge anything automatically
-* require human review for all PRs
+1. Respect issue scope
+2. Pass validation
+3. Preserve abstractions
+4. Follow architecture docs
+5. THEN implement
 
 ---
 
-### 17.6 Priority (UNATTENDED MODE)
+## Expected Output Quality
 
-Even in unattended execution:
+Each issue must result in:
 
-1. Follow architecture
-2. Respect issue boundaries
-3. Maintain abstraction integrity
-4. THEN implement functionality
-
----
-
-## 18. Anti-Patterns (DO NOT DO)
-Do not implement multi-file analysis
-Do not introduce background workers or queues
-Do not add persistent storage beyond session scope
-Do not bypass provider abstraction
-Do not generate full refactored solutions
-Do not invent missing requirements
-Do not overbuild UI or system components
+* one clean branch
+* one focused PR
+* no scope drift
+* no speculative code
+* no hidden coupling
 
 ---
 
-## 19. Guiding Principle
+## Anti-Patterns (DO NOT DO)
 
-Refactor Trainer improves how developers think, not how fast code is generated.
+* Invent missing requirements
+* Expand scope implicitly
+* Bypass system boundaries
+* Introduce unrelated changes
+* Replace structured logic with AI output
+
+---
+
+## Guiding Principle
+
+Correct structure and disciplined execution matter more than feature completeness.
