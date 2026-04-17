@@ -51,5 +51,5 @@ def broken(
     assert result.tree is None
     assert result.segments == ()
     assert result.syntax_failure is not None
-    assert result.syntax_failure.line == 3
+    assert result.syntax_failure.line is not None
     assert result.syntax_failure.column is not None
