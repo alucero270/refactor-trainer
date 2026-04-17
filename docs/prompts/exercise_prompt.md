@@ -49,6 +49,7 @@ Return:
 {
   "title": "",
   "description": "",
+  "rationale": "",
   "difficulty": ""
 }
 ````
@@ -59,6 +60,7 @@ Return:
 {
   "title": "Improve readability in a multi-purpose function",
   "description": "Refactor this function to reduce responsibility overlap and make the main flow easier to follow.",
+  "rationale": "This region is harder to maintain because responsibility overlap makes the main flow less clear and increases change risk.",
   "difficulty": "Medium"
 }
 ```
@@ -67,5 +69,6 @@ Return:
 
 - `title` must be concise and task-oriented.
 - `description` must describe the improvement goal without prescribing the full implementation.
+- `rationale` must explain why the refactor matters without introducing a second primary issue or revealing the finished design.
 - `difficulty` must be one of `Easy`, `Medium`, or `Hard`.
 - Any output outside valid JSON should be rejected.
