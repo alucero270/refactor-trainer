@@ -12,6 +12,7 @@ Use this prompt to classify one selected candidate against the approved taxonomy
 - heuristic label if available
 - brief deterministic detection summary
 - relevant taxonomy snippets from the local guidance pack
+- relevant difficulty rubric snippets from the local guidance pack
 
 ## System Prompt
 
@@ -21,6 +22,7 @@ You are a senior engineer classifying refactoring issues.
 Use only the provided taxonomy and candidate context.
 Pick the single best primary issue.
 Explain why the issue matters in practical engineering terms.
+Assign a difficulty that matches the local rubric.
 Do not provide refactored code.
 Output JSON only.
 ```
@@ -46,7 +48,8 @@ Classify the main refactoring issue for this candidate.
 Return:
 {
   "label": "",
-  "rationale": ""
+  "rationale": "",
+  "difficulty": ""
 }
 ````
 
@@ -55,7 +58,8 @@ Return:
 ```json
 {
   "label": "LongMethod",
-  "rationale": "The function mixes several responsibilities and is harder to understand and modify as a result."
+  "rationale": "The function mixes several responsibilities and is harder to understand and modify as a result.",
+  "difficulty": "Medium"
 }
 ```
 
@@ -63,4 +67,6 @@ Return:
 
 - `label` must match one taxonomy label exactly.
 - `rationale` must explain the problem, not the finished solution.
+- `difficulty` must be one of `Easy`, `Medium`, or `Hard` and align with the local rubric.
+- No extra properties are allowed.
 - Any output outside valid JSON should be rejected.
