@@ -1,0 +1,79 @@
+{
+  "candidate_cap": 3,
+  "cases": [
+    {
+      "id": "ranked_top_three",
+      "fixture": "ranked_top_three.py",
+      "description": "A single file with more than three potential smells where only the top three should be returned.",
+      "expected_positives": [
+        {
+          "rank": 1,
+          "label": "LongMethod",
+          "symbol": "process_order",
+          "line_start": 1,
+          "line_end": 28
+        },
+        {
+          "rank": 2,
+          "label": "DeepNesting",
+          "symbol": "process_order",
+          "line_start": 7,
+          "line_end": 20
+        },
+        {
+          "rank": 3,
+          "label": "DuplicatedCode",
+          "symbol": "build_invoice_rows/build_receipt_rows",
+          "line_start": 32,
+          "line_end": 48
+        }
+      ],
+      "expected_negatives": [
+        {
+          "label": "PoorNaming",
+          "symbol": "tmp",
+          "reason": "The file includes a lower-priority naming smell, but the ranked result must still cap at three candidates."
+        }
+      ]
+    },
+    {
+      "id": "no_long_method_linear_pipeline",
+      "fixture": "no_long_method_linear_pipeline.py",
+      "description": "A long but linear function that should be excluded from LongMethod.",
+      "expected_positives": [],
+      "expected_negatives": [
+        {
+          "label": "LongMethod",
+          "symbol": "export_customer_rows",
+          "reason": "Linear data-shaping pipeline with no meaningful branching or mixed responsibilities."
+        }
+      ]
+    },
+    {
+      "id": "no_duplicate_for_trivial_repetition",
+      "fixture": "no_duplicate_for_trivial_repetition.py",
+      "description": "Repeated low-value lines that should not trigger DuplicatedCode.",
+      "expected_positives": [],
+      "expected_negatives": [
+        {
+          "label": "DuplicatedCode",
+          "symbol": "send_status/send_summary",
+          "reason": "Repetition is limited to logging and simple return wrappers."
+        }
+      ]
+    },
+    {
+      "id": "no_poor_naming_for_conventional_short_names",
+      "fixture": "no_poor_naming_for_conventional_short_names.py",
+      "description": "Short names that are valid by convention and should not trigger PoorNaming.",
+      "expected_positives": [],
+      "expected_negatives": [
+        {
+          "label": "PoorNaming",
+          "symbol": "i/j/id",
+          "reason": "Identifiers are conventional loop and callback names used in clear local contexts."
+        }
+      ]
+    }
+  ]
+}
