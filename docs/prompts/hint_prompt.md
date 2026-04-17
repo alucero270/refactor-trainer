@@ -25,6 +25,7 @@ Give only the requested hint level.
 Do not provide code solutions.
 Do not provide step-by-step implementation.
 Do not reveal the final structure completely.
+Return the hint level and hint type explicitly.
 Output JSON only.
 ```
 
@@ -49,6 +50,8 @@ Generate hint level {{hint_level}} for this exercise.
 
 Return:
 {
+  "hint_level": 0,
+  "hint_type": "",
   "hint": ""
 }
 ````
@@ -57,13 +60,17 @@ Return:
 
 ```json
 {
+  "hint_level": 1,
+  "hint_type": "orientation",
   "hint": "Consider whether one cohesive piece of work in this region could be separated from the rest of the function."
 }
 ```
 
 ## Validation Rules
 
-- Hint 1 should orient the learner to the problem region and direction.
+- Hint 1 must use `hint_level` `1` and `hint_type` `orientation`.
+- Hint 2 must use `hint_level` `2` and `hint_type` `guidance`.
 - Hint 2 may be more specific but must still avoid the finished solution.
 - Any hint containing full code or step-by-step implementation should be rejected.
+- No extra properties are allowed.
 - Any output outside valid JSON should be rejected.
