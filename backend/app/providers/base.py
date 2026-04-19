@@ -1,5 +1,15 @@
 from abc import ABC, abstractmethod
 
+from app.providers.contracts import (
+    CandidateClassificationInput,
+    CandidateClassificationResult,
+    ExerciseGenerationInput,
+    ExerciseGenerationResult,
+    HintGenerationInput,
+    HintGenerationResult,
+    ProviderHealth,
+)
+
 
 class ModelProvider(ABC):
     kind: str = "unknown"
@@ -10,18 +20,21 @@ class ModelProvider(ABC):
         """Return the provider name."""
 
     @abstractmethod
-    def healthCheck(self) -> dict:
-        """Return a placeholder health payload."""
+    def healthCheck(self) -> ProviderHealth:
+        """Return provider readiness information."""
 
     @abstractmethod
-    def classifyCandidate(self, payload: dict) -> dict:
+    def classifyCandidate(
+        self, payload: CandidateClassificationInput
+    ) -> CandidateClassificationResult:
         """Classify a refactor candidate."""
 
     @abstractmethod
-    def generateExercise(self, payload: dict) -> dict:
-        """Generate a placeholder exercise."""
+    def generateExercise(
+        self, payload: ExerciseGenerationInput
+    ) -> ExerciseGenerationResult:
+        """Generate a refactoring exercise."""
 
     @abstractmethod
-    def generateHints(self, payload: dict) -> dict:
-        """Generate placeholder hints."""
-
+    def generateHints(self, payload: HintGenerationInput) -> HintGenerationResult:
+        """Generate one progressive hint."""
