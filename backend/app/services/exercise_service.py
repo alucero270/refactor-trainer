@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from app.guidance.base import GuidanceRetriever
+from app.guidance.base import GuidanceRequest, GuidanceRetriever, GuidanceSnippet
 from app.schemas.api import AttemptFeedbackResponse, CandidateResponse, HintResponse, SubmitAttemptRequest
 from app.storage.memory import app_state
 
@@ -11,21 +11,35 @@ class ExerciseService:
 
     def create_exercise(self, candidate_id: str) -> CandidateResponse:
         exercise_id = f"ex-{uuid4().hex[:8]}"
-        guidance = self.guidance_retriever.getGuidance("exercise_authoring_rules")
+        guidance = self.guidance_retriever.getGuidance(
+            GuidanceRequest(
+                language="python",
+                query="exercise_authoring_rules",
+                maxSnippets=1,
+            )
+        )
+        guidance_summary = self._guidance_summary(guidance)
         app_state.exercises[exercise_id] = {
             "candidate_id": candidate_id,
-            "guidance_excerpt": guidance["summary"],
+            "guidance_excerpt": guidance_summary,
         }
         return CandidateResponse(
             exercise_id=exercise_id,
             candidate_id=candidate_id,
             instructions="Placeholder exercise for the selected candidate.",
-            guidance_summary=guidance["summary"],
+            guidance_summary=guidance_summary,
             status="stub",
         )
 
     def generate_hints(self, exercise_id: str) -> HintResponse:
-        guidance = self.guidance_retriever.getGuidance("hint_policy")
+        guidance = self.guidance_retriever.getGuidance(
+            GuidanceRequest(
+                language="python",
+                query="hint_policy",
+                maxSnippets=1,
+            )
+        )
+        guidance_summary = self._guidance_summary(guidance)
         hints = [
             "Start by identifying the smallest behavior-preserving extraction.",
             "Name the new unit around intent, not implementation detail.",
@@ -33,7 +47,7 @@ class ExerciseService:
         return HintResponse(
             exercise_id=exercise_id,
             hints=hints,
-            guidance_summary=guidance["summary"],
+            guidance_summary=guidance_summary,
             status="stub",
         )
 
@@ -50,3 +64,6 @@ class ExerciseService:
             status="stub",
         )
 
+    @staticmethod
+    def _guidance_summary(guidance: list[GuidanceSnippet]) -> str:
+        return guidance[0].summary
