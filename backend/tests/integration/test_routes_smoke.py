@@ -35,7 +35,18 @@ def test_provider_routes_smoke(client):
 
     update_response = client.put(
         "/provider/config",
-        json={"config": {"default_provider": "ollama", "configured_providers": ["ollama", "openai"]}},
+        json={
+            "config": {
+                "default_provider": "ollama",
+                "configured_providers": ["ollama", "openai"],
+                "providers": {
+                    "ollama": {"base_url": "http://localhost:11434"},
+                    "openai": {"api_key": "openai-test-key", "model": "gpt-test"},
+                    "anthropic": {},
+                    "mcp": {},
+                },
+            }
+        },
     )
     assert update_response.status_code == 200
 
@@ -53,4 +64,3 @@ def test_github_routes_smoke(client):
         json={"repo_id": "demo", "path": "src/example.py", "ref": "main"},
     )
     assert import_response.status_code == 200
-
