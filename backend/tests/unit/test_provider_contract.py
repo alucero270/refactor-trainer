@@ -13,6 +13,7 @@ from app.providers.contracts import (
     ProviderHealth,
 )
 from app.providers.mcp import McpProvider
+from app.providers.mock import MockProvider
 from app.providers.ollama import OllamaProvider
 from app.providers.openai_provider import OpenAIProvider
 
@@ -98,3 +99,32 @@ def test_provider_contract(provider_cls, expected_name):
     hint = provider.generateHints(make_hint_input())
     assert isinstance(hint, HintGenerationResult)
     assert "level 1" in hint.hint
+
+
+def test_mock_provider_contract_is_deterministic():
+    provider = MockProvider()
+    classification_input = make_classification_input()
+    exercise_input = make_exercise_input()
+    hint_input = make_hint_input()
+
+    assert provider.healthCheck() == ProviderHealth(
+        provider="mock",
+        status="ready",
+        available=True,
+        message="Mock provider is ready for deterministic development flows.",
+    )
+
+    first_classification = provider.classifyCandidate(classification_input)
+    second_classification = provider.classifyCandidate(classification_input)
+    assert first_classification == second_classification
+    assert first_classification.label == "LongMethod"
+
+    first_exercise = provider.generateExercise(exercise_input)
+    second_exercise = provider.generateExercise(exercise_input)
+    assert first_exercise == second_exercise
+    assert first_exercise.title == "Practice improving LongMethod"
+
+    first_hint = provider.generateHints(hint_input)
+    second_hint = provider.generateHints(hint_input)
+    assert first_hint == second_hint
+    assert "LongMethod" in first_hint.hint
