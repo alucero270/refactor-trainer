@@ -52,6 +52,8 @@ def test_provider_routes_smoke(client):
 
     health_response = client.get("/provider/health")
     assert health_response.status_code == 200
+    assert health_response.json()["providers"][0]["available"] is False
+    assert health_response.json()["providers"][0]["failure"]["code"] == "not_implemented"
 
 
 def test_github_routes_smoke(client):

@@ -9,6 +9,7 @@ from app.providers.contracts import (
     ExerciseGenerationResult,
     HintGenerationInput,
     HintGenerationResult,
+    ProviderFailure,
     ProviderHealth,
 )
 from app.providers.mcp import McpProvider
@@ -75,8 +76,13 @@ def test_provider_contract(provider_cls, expected_name):
     assert provider.name() == expected_name
     assert provider.healthCheck() == ProviderHealth(
         provider=expected_name,
-        status="stub",
+        status="unavailable",
+        available=False,
         message=provider.healthCheck().message,
+        failure=ProviderFailure(
+            code="not_implemented",
+            detail=provider.healthCheck().failure.detail,
+        ),
     )
 
     classification = provider.classifyCandidate(make_classification_input())

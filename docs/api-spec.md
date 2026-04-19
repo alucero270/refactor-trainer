@@ -324,8 +324,13 @@ Response:
   "providers": [
     {
       "provider": "ollama",
-      "status": "ok",
-      "message": "reachable"
+      "status": "unavailable",
+      "available": false,
+      "message": "Local Ollama path not yet wired.",
+      "failure": {
+        "code": "not_implemented",
+        "detail": "Ollama health checks are not implemented in the scaffold."
+      }
     }
   ]
 }
@@ -334,6 +339,8 @@ Response:
 Rules:
 
 - Health checks must return actionable failure reasons.
+- Successful checks return `status: "ready"`, `available: true`, and no failure object.
+- Unavailable checks return `status: "unavailable"`, `available: false`, and structured failure details.
 - MCP must support the same core health and generation operations as other providers.
 
 ### `GET /github/connect`
