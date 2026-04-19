@@ -6,6 +6,7 @@ from app.providers.contracts import (
     ExerciseGenerationResult,
     HintGenerationInput,
     HintGenerationResult,
+    ProviderFailure,
     ProviderHealth,
 )
 
@@ -20,8 +21,13 @@ class McpProvider(ModelProvider):
     def healthCheck(self) -> ProviderHealth:
         return ProviderHealth(
             provider=self.name(),
-            status="stub",
+            status="unavailable",
+            available=False,
             message="MCP transport is intentionally not implemented yet.",
+            failure=ProviderFailure(
+                code="not_implemented",
+                detail="MCP health checks are not implemented in the scaffold.",
+            ),
         )
 
     def classifyCandidate(

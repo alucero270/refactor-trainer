@@ -6,6 +6,7 @@ from app.providers.contracts import (
     ExerciseGenerationResult,
     HintGenerationInput,
     HintGenerationResult,
+    ProviderFailure,
     ProviderHealth,
 )
 
@@ -20,8 +21,13 @@ class OllamaProvider(ModelProvider):
     def healthCheck(self) -> ProviderHealth:
         return ProviderHealth(
             provider=self.name(),
-            status="stub",
+            status="unavailable",
+            available=False,
             message="Local Ollama path not yet wired.",
+            failure=ProviderFailure(
+                code="not_implemented",
+                detail="Ollama health checks are not implemented in the scaffold.",
+            ),
         )
 
     def classifyCandidate(

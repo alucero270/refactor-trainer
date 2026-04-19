@@ -144,10 +144,17 @@ class ProviderConfigResponse(BaseModel):
     config: ProviderConfig
 
 
+class ProviderHealthFailure(BaseModel):
+    code: str
+    detail: str
+
+
 class ProviderHealthItem(BaseModel):
     provider: str
-    status: str
+    status: Literal["ready", "unavailable"]
+    available: bool
     message: str
+    failure: ProviderHealthFailure | None = None
 
 
 class ProviderHealthResponse(BaseModel):
