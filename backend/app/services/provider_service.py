@@ -20,6 +20,5 @@ class ProviderService:
 
     def health(self) -> ProviderHealthResponse:
         return ProviderHealthResponse(
-            providers=[provider.healthCheck() for provider in self.providers]
+            providers=[provider.healthCheck().model_dump() for provider in self.providers]
         )
-
