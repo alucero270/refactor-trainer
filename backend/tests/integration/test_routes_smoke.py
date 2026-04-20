@@ -23,7 +23,18 @@ def test_submit_code_and_candidates_smoke(client):
     candidates_response = client.get("/candidates", params={"submission_id": submission_id})
     assert candidates_response.status_code == 200
     assert "candidates" in candidates_response.json()
-    assert candidates_response.json()["candidates"] == []
+    assert candidates_response.json()["candidates"] == [
+        {
+            "id": "cand-poornaming-process-1",
+            "title": "Clarify naming in 'process'",
+            "smell": "PoorNaming",
+            "summary": (
+                "Function 'process' uses generic names (process, thing), "
+                "which slows comprehension."
+            ),
+            "severity": "low",
+        }
+    ]
 
 
 def test_submit_code_rejects_non_python_or_multi_file_shapes(client):
