@@ -1,3 +1,7 @@
+from app.providers.contracts import ProviderHealth
+from app.providers.ollama import OllamaProvider
+
+
 def test_submit_code_and_candidates_smoke(client):
     submit_response = client.post(
         "/submit-code",
@@ -26,7 +30,17 @@ def test_exercise_hints_and_attempt_smoke(client):
     assert attempt_response.status_code == 200
 
 
-def test_provider_routes_smoke(client):
+def test_provider_routes_smoke(client, monkeypatch):
+    def fake_ollama_health(self):
+        return ProviderHealth(
+            provider="ollama",
+            status="ready",
+            available=True,
+            message="Ollama is ready with model 'llama3.2:latest'.",
+        )
+
+    monkeypatch.setattr(OllamaProvider, "healthCheck", fake_ollama_health)
+
     providers_response = client.get("/providers")
     assert providers_response.status_code == 200
 
@@ -52,8 +66,9 @@ def test_provider_routes_smoke(client):
 
     health_response = client.get("/provider/health")
     assert health_response.status_code == 200
-    assert health_response.json()["providers"][0]["available"] is False
-    assert health_response.json()["providers"][0]["failure"]["code"] == "not_implemented"
+    assert health_response.json()["providers"][0]["provider"] == "ollama"
+    assert health_response.json()["providers"][0]["available"] is True
+    assert health_response.json()["providers"][0]["failure"] is None
 
 
 def test_github_routes_smoke(client):
