@@ -1,25 +1,30 @@
 from uuid import uuid4
 
+from app.analysis.candidate_detector import DetectedCandidate, PythonCandidateDetector
 from app.schemas.api import Candidate, CandidateListResponse, SubmitCodeRequest, SubmitCodeResponse
 from app.storage.memory import app_state
 
 
 class CandidateService:
+    def __init__(self, detector: PythonCandidateDetector | None = None) -> None:
+        self.detector = detector or PythonCandidateDetector()
+
     def submit_code(self, payload: SubmitCodeRequest) -> SubmitCodeResponse:
         submission_id = f"sub-{uuid4().hex[:8]}"
         filename = self._normalize_filename(payload)
         normalized_code = self._normalize_code(payload.code)
-        candidates: list[Candidate] = []
+        detected_candidates = self.detector.detect(normalized_code)
         app_state.submissions[submission_id] = {
             "source": payload.source,
             "code": normalized_code,
             "filename": filename,
-            "candidates": candidates,
+            "candidates": [],
+            "detected_candidates": [candidate.model_dump() for candidate in detected_candidates],
             "language": "python",
         }
         return SubmitCodeResponse(
             submission_id=submission_id,
-            candidate_count=len(candidates),
+            candidate_count=len(detected_candidates),
             status="accepted",
         )
 
