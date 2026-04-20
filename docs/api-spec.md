@@ -218,7 +218,27 @@ Response:
 {
   "config": {
     "default_provider": "ollama",
-    "configured_providers": ["ollama"]
+    "configured_providers": ["ollama"],
+    "providers": {
+      "ollama": {
+        "base_url": "http://localhost:11434",
+        "model": null
+      },
+      "openai": {
+        "api_key": null,
+        "model": null,
+        "base_url": null
+      },
+      "anthropic": {
+        "api_key": null,
+        "model": null,
+        "base_url": null
+      },
+      "mcp": {
+        "server_url": null,
+        "model": null
+      }
+    }
   }
 }
 ```
@@ -231,7 +251,27 @@ Request:
 {
   "config": {
     "default_provider": "ollama",
-    "configured_providers": ["ollama", "openai"]
+    "configured_providers": ["ollama", "openai"],
+    "providers": {
+      "ollama": {
+        "base_url": "http://localhost:11434",
+        "model": null
+      },
+      "openai": {
+        "api_key": "**********",
+        "model": "gpt-test",
+        "base_url": null
+      },
+      "anthropic": {
+        "api_key": null,
+        "model": null,
+        "base_url": null
+      },
+      "mcp": {
+        "server_url": null,
+        "model": null
+      }
+    }
   }
 }
 ```
@@ -242,7 +282,27 @@ Response:
 {
   "config": {
     "default_provider": "ollama",
-    "configured_providers": ["ollama", "openai"]
+    "configured_providers": ["ollama", "openai"],
+    "providers": {
+      "ollama": {
+        "base_url": "http://localhost:11434",
+        "model": null
+      },
+      "openai": {
+        "api_key": "**********",
+        "model": "gpt-test",
+        "base_url": null
+      },
+      "anthropic": {
+        "api_key": null,
+        "model": null,
+        "base_url": null
+      },
+      "mcp": {
+        "server_url": null,
+        "model": null
+      }
+    }
   }
 }
 ```
@@ -251,6 +311,9 @@ Rules:
 
 - Secrets are local-only and must never appear in logs.
 - Config updates must not imply automatic fallback between providers.
+- `default_provider` must also appear in `configured_providers`.
+- OpenAI and Anthropic require an API key before they can be marked configured.
+- MCP requires a `server_url` before it can be marked configured.
 
 ### `GET /provider/health`
 
@@ -261,8 +324,13 @@ Response:
   "providers": [
     {
       "provider": "ollama",
-      "status": "ok",
-      "message": "reachable"
+      "status": "unavailable",
+      "available": false,
+      "message": "Local Ollama path not yet wired.",
+      "failure": {
+        "code": "not_implemented",
+        "detail": "Ollama health checks are not implemented in the scaffold."
+      }
     }
   ]
 }
@@ -271,6 +339,8 @@ Response:
 Rules:
 
 - Health checks must return actionable failure reasons.
+- Successful checks return `status: "ready"`, `available: true`, and no failure object.
+- Unavailable checks return `status: "unavailable"`, `available: false`, and structured failure details.
 - MCP must support the same core health and generation operations as other providers.
 
 ### `GET /github/connect`

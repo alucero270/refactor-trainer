@@ -1,10 +1,13 @@
+from collections.abc import Sequence
+
+from app.providers.base import ModelProvider
 from app.providers.registry import build_provider_registry
 from app.schemas.api import ProviderHealthResponse, ProviderListResponse
 
 
 class ProviderService:
-    def __init__(self) -> None:
-        self.providers = build_provider_registry()
+    def __init__(self, providers: Sequence[ModelProvider] | None = None) -> None:
+        self.providers = list(providers) if providers is not None else build_provider_registry()
 
     def list_providers(self) -> ProviderListResponse:
         return ProviderListResponse(
@@ -20,6 +23,5 @@ class ProviderService:
 
     def health(self) -> ProviderHealthResponse:
         return ProviderHealthResponse(
-            providers=[provider.healthCheck() for provider in self.providers]
+            providers=[provider.healthCheck().model_dump() for provider in self.providers]
         )
-
