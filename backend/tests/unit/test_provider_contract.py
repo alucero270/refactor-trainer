@@ -14,7 +14,6 @@ from app.providers.contracts import (
 )
 from app.providers.mcp import McpProvider
 from app.providers.mock import MockProvider
-from app.providers.ollama import OllamaProvider
 from app.providers.openai_provider import OpenAIProvider
 
 
@@ -65,7 +64,6 @@ def test_model_provider_contract_is_abstract():
 @pytest.mark.parametrize(
     "provider_cls,expected_name",
     [
-        (OllamaProvider, "ollama"),
         (OpenAIProvider, "openai"),
         (AnthropicProvider, "anthropic"),
         (McpProvider, "mcp"),
