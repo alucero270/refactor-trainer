@@ -1,7 +1,12 @@
+import re
 from uuid import uuid4
 
 from app.guidance.base import GuidanceRequest, GuidanceRetriever, GuidanceSnippet
-from app.providers.contracts import CandidateClassificationInput, ExerciseGenerationInput
+from app.providers.contracts import (
+    CandidateClassificationInput,
+    ExerciseGenerationInput,
+    HintGenerationInput,
+)
 from app.schemas.api import AttemptFeedbackResponse, ExerciseResponse, HintResponse, SubmitAttemptRequest
 from app.services.provider_service import ProviderService
 from app.storage.memory import app_state
@@ -47,6 +52,7 @@ class ExerciseService:
             "title": generated_exercise.title,
             "description": generated_exercise.description,
             "difficulty": generated_exercise.difficulty,
+            "revealed_hints": [],
         }
         return ExerciseResponse(
             exercise_id=exercise_id,
@@ -58,6 +64,7 @@ class ExerciseService:
         )
 
     def generate_hints(self, exercise_id: str) -> HintResponse:
+        exercise = self._find_exercise(exercise_id)
         guidance = self.guidance_retriever.getGuidance(
             GuidanceRequest(
                 language="python",
@@ -66,15 +73,30 @@ class ExerciseService:
             )
         )
         guidance_summary = self._guidance_summary(guidance)
-        hints = [
-            "Start by identifying the smallest behavior-preserving extraction.",
-            "Name the new unit around intent, not implementation detail.",
-        ]
+        revealed_hints = list(exercise.get("revealed_hints", []))
+
+        if len(revealed_hints) < 2:
+            provider = self.provider_service.resolve_default_provider()
+            next_level = len(revealed_hints) + 1
+            generated_hint = provider.generateHints(
+                HintGenerationInput(
+                    language="python",
+                    exercise_title=exercise["title"],
+                    exercise_description=exercise["description"],
+                    hint_level=next_level,
+                    candidate_code=exercise["candidate_code"],
+                    issue_label=exercise["issue_label"],
+                )
+            )
+            sanitized_hint = self._validate_hint(generated_hint.hint, exercise["candidate_code"])
+            revealed_hints.append(sanitized_hint)
+            exercise["revealed_hints"] = revealed_hints
+
         return HintResponse(
             exercise_id=exercise_id,
-            hints=hints,
+            hints=revealed_hints,
             guidance_summary=guidance_summary,
-            status="stub",
+            status="generated",
         )
 
     def submit_attempt(
@@ -101,3 +123,36 @@ class ExerciseService:
                 if candidate["id"] == candidate_id:
                     return candidate
         raise LookupError(f"Candidate '{candidate_id}' was not found.")
+
+    @staticmethod
+    def _find_exercise(exercise_id: str) -> dict:
+        exercise = app_state.exercises.get(exercise_id)
+        if exercise is None:
+            raise LookupError(f"Exercise '{exercise_id}' was not found.")
+        return exercise
+
+    @staticmethod
+    def _validate_hint(hint: str, candidate_code: str) -> str:
+        cleaned_hint = hint.strip()
+        if not cleaned_hint:
+            raise RuntimeError("Generated hint violated leakage guardrails.")
+
+        if "```" in cleaned_hint:
+            raise RuntimeError("Generated hint violated leakage guardrails.")
+
+        if re.search(r"\b(step\s*\d+|\d+\.)", cleaned_hint, flags=re.IGNORECASE):
+            raise RuntimeError("Generated hint violated leakage guardrails.")
+
+        candidate_lines = [line.strip() for line in candidate_code.splitlines() if line.strip()]
+        if any(len(line) > 20 and line in cleaned_hint for line in candidate_lines):
+            raise RuntimeError("Generated hint violated leakage guardrails.")
+
+        code_like_lines = [
+            line
+            for line in cleaned_hint.splitlines()
+            if line.strip().startswith(("def ", "class ", "if ", "for ", "while ", "return "))
+        ]
+        if code_like_lines:
+            raise RuntimeError("Generated hint violated leakage guardrails.")
+
+        return cleaned_hint
