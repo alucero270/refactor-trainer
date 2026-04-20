@@ -4,7 +4,7 @@ from app.guidance.local import LocalGuidanceRetriever
 from app.schemas.api import (
     AttemptFeedbackResponse,
     CandidateListResponse,
-    CandidateResponse,
+    ExerciseResponse,
     GitHubImportRequest,
     GitHubImportResponse,
     GitHubRepoTreeResponse,
@@ -48,9 +48,14 @@ def list_candidates(submission_id: str = Query(...)) -> CandidateListResponse:
     return candidate_service.list_candidates(submission_id)
 
 
-@router.post("/exercise/{candidate_id}", response_model=CandidateResponse)
-def create_exercise(candidate_id: str) -> CandidateResponse:
-    return exercise_service.create_exercise(candidate_id)
+@router.post("/exercise/{candidate_id}", response_model=ExerciseResponse)
+def create_exercise(candidate_id: str) -> ExerciseResponse:
+    try:
+        return exercise_service.create_exercise(candidate_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.get("/hints/{exercise_id}")

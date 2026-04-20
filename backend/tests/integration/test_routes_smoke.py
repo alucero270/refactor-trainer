@@ -1,5 +1,7 @@
 from app.providers.contracts import ProviderHealth
+from app.providers.mock import MockProvider
 from app.providers.ollama import OllamaProvider
+from app.storage.memory import app_state
 
 
 def test_submit_code_and_candidates_smoke(client):
@@ -66,9 +68,32 @@ def test_submit_code_rejects_invalid_python_syntax(client):
     assert "Submitted code is not valid Python syntax" in response.json()["detail"]
 
 
-def test_exercise_hints_and_attempt_smoke(client):
-    exercise_response = client.post("/exercise/cand-demo")
+def test_exercise_hints_and_attempt_smoke(client, monkeypatch):
+    from app.api.routes import exercise_service
+
+    monkeypatch.setattr(exercise_service.provider_service, "providers", [MockProvider()])
+
+    submit_response = client.post(
+        "/submit-code",
+        json={
+            "source": "paste",
+            "filename": "exercise.py",
+            "code": (
+                "def process(data, value):\n"
+                "    total = 0\n"
+                "    thing = value + 1\n"
+                "    return total + thing\n"
+            ),
+        },
+    )
+    candidate_id = client.get(
+        "/candidates", params={"submission_id": submit_response.json()["submission_id"]}
+    ).json()["candidates"][0]["id"]
+
+    exercise_response = client.post(f"/exercise/{candidate_id}")
     assert exercise_response.status_code == 200
+    assert exercise_response.json()["status"] == "generated"
+    assert exercise_response.json()["title"] == "Practice improving PoorNaming"
 
     exercise_id = exercise_response.json()["exercise_id"]
     hints_response = client.get(f"/hints/{exercise_id}")
@@ -79,6 +104,7 @@ def test_exercise_hints_and_attempt_smoke(client):
         json={"attempt_code": "def refactored():\n    pass\n"},
     )
     assert attempt_response.status_code == 200
+    assert app_state.exercises[exercise_id]["issue_label"] == "PoorNaming"
 
 
 def test_provider_routes_smoke(client, monkeypatch):
