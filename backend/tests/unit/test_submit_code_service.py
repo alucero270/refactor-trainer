@@ -73,3 +73,50 @@ def test_submit_code_rejects_invalid_python_before_storing_submission():
         )
 
     assert app_state.submissions == {}
+
+
+def test_list_candidates_returns_public_candidates_in_detected_order():
+    service = CandidateService()
+
+    response = service.submit_code(
+        SubmitCodeRequest(
+            source="paste",
+            filename="example.py",
+            code=(
+                "def process(data, value, extra):\n"
+                "    total = 0\n"
+                "    result = []\n"
+                "    if data:\n"
+                "        for item in data:\n"
+                "            if item > value:\n"
+                "                if extra:\n"
+                "                    total += item\n"
+                "                    result.append(item)\n"
+                "    if data:\n"
+                "        total += 1\n"
+                "    if data:\n"
+                "        total += 1\n"
+                "    temp = total\n"
+                "    thing = temp + value\n"
+                "    return thing\n"
+            ),
+        )
+    )
+
+    listed = service.list_candidates(response.submission_id)
+
+    assert [candidate.smell for candidate in listed.candidates] == [
+        "LongMethod",
+        "DeepNesting",
+        "DuplicatedCode",
+    ]
+    assert app_state.submissions[response.submission_id]["candidates"][0] == {
+        "id": "cand-longmethod-process-1",
+        "title": "Break up long function 'process'",
+        "smell": "LongMethod",
+        "summary": (
+            "Function 'process' spans 16 lines across 15 statements, "
+            "which suggests multiple responsibilities."
+        ),
+        "severity": "high",
+    }

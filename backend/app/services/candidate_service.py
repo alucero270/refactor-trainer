@@ -33,9 +33,15 @@ class CandidateService:
         if not submission:
             return CandidateListResponse(submission_id=submission_id, candidates=[])
 
+        public_candidates = [
+            Candidate.model_validate(candidate)
+            for candidate in submission.get("detected_candidates", [])
+        ]
+        submission["candidates"] = [candidate.model_dump() for candidate in public_candidates]
+
         return CandidateListResponse(
             submission_id=submission_id,
-            candidates=submission["candidates"],
+            candidates=public_candidates,
         )
 
     @staticmethod
