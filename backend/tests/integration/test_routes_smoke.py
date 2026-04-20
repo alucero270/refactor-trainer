@@ -8,11 +8,32 @@ def test_submit_code_and_candidates_smoke(client):
         json={"source": "paste", "filename": "example.py", "code": "def example():\n    return 1\n"},
     )
     assert submit_response.status_code == 200
+    assert submit_response.json()["candidate_count"] == 0
 
     submission_id = submit_response.json()["submission_id"]
     candidates_response = client.get("/candidates", params={"submission_id": submission_id})
     assert candidates_response.status_code == 200
     assert "candidates" in candidates_response.json()
+    assert candidates_response.json()["candidates"] == []
+
+
+def test_submit_code_rejects_non_python_or_multi_file_shapes(client):
+    invalid_extension = client.post(
+        "/submit-code",
+        json={"source": "upload", "filename": "example.txt", "code": "print('hello')"},
+    )
+    assert invalid_extension.status_code == 400
+    assert invalid_extension.json()["detail"] == "Only single Python files are supported."
+
+    nested_path = client.post(
+        "/submit-code",
+        json={"source": "upload", "filename": "src/example.py", "code": "print('hello')"},
+    )
+    assert nested_path.status_code == 400
+    assert (
+        nested_path.json()["detail"]
+        == "submit-code accepts exactly one Python file, not a file path."
+    )
 
 
 def test_exercise_hints_and_attempt_smoke(client):

@@ -7,12 +7,15 @@ from app.storage.memory import app_state
 class CandidateService:
     def submit_code(self, payload: SubmitCodeRequest) -> SubmitCodeResponse:
         submission_id = f"sub-{uuid4().hex[:8]}"
-        candidates = self._detect_candidates(payload.code)
+        filename = self._normalize_filename(payload)
+        normalized_code = self._normalize_code(payload.code)
+        candidates: list[Candidate] = []
         app_state.submissions[submission_id] = {
             "source": payload.source,
-            "code": payload.code,
-            "filename": payload.filename,
+            "code": normalized_code,
+            "filename": filename,
             "candidates": candidates,
+            "language": "python",
         }
         return SubmitCodeResponse(
             submission_id=submission_id,
@@ -30,17 +33,26 @@ class CandidateService:
             candidates=submission["candidates"],
         )
 
-    def _detect_candidates(self, code: str) -> list[Candidate]:
-        if not code.strip():
-            return []
+    @staticmethod
+    def _normalize_filename(payload: SubmitCodeRequest) -> str:
+        filename = (payload.filename or "").strip()
 
-        return [
-            Candidate(
-                id=f"cand-{uuid4().hex[:8]}",
-                title="Extract focused helper",
-                smell="long_function",
-                summary="Deterministic scaffold candidate produced for non-empty input.",
-                severity="medium",
-            )
-        ]
+        if payload.source == "upload" and not filename:
+            raise ValueError("filename is required for upload submissions.")
 
+        if filename:
+            if "/" in filename or "\\" in filename:
+                raise ValueError("submit-code accepts exactly one Python file, not a file path.")
+            if not filename.lower().endswith(".py"):
+                raise ValueError("Only single Python files are supported.")
+            return filename
+
+        return "snippet.py"
+
+    @staticmethod
+    def _normalize_code(code: str) -> str:
+        normalized = code.replace("\r\n", "\n").replace("\r", "\n")
+        normalized = normalized.lstrip("\ufeff")
+        if normalized and not normalized.endswith("\n"):
+            normalized += "\n"
+        return normalized

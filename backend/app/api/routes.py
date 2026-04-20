@@ -37,7 +37,10 @@ def health() -> HealthResponse:
 
 @router.post("/submit-code", response_model=SubmitCodeResponse)
 def submit_code(payload: SubmitCodeRequest) -> SubmitCodeResponse:
-    return candidate_service.submit_code(payload)
+    try:
+        return candidate_service.submit_code(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/candidates", response_model=CandidateListResponse)
@@ -119,4 +122,3 @@ def github_import_file(payload: GitHubImportRequest) -> GitHubImportResponse:
         content="# placeholder imported Python file\n",
         status="stub",
     )
-
