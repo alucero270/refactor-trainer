@@ -1,5 +1,6 @@
 import pytest
 
+from app.guidance.base import GuidanceRequest, GuidanceRetriever, GuidanceSnippet
 from app.guidance.local import LocalGuidanceRetriever
 from app.providers.mock import MockProvider
 from app.schemas.api import SubmitAttemptRequest, SubmitCodeRequest
@@ -118,7 +119,61 @@ def test_exercise_service_rejects_invalid_or_unchanged_attempts():
     )
 
 
-def build_exercise_service(provider: MockProvider | None = None) -> tuple[ExerciseService, str]:
+def test_exercise_service_supplies_guidance_snippets_and_fallbacks():
+    class RecordingProvider(MockProvider):
+        def __init__(self) -> None:
+            self.classification_inputs = []
+            self.exercise_inputs = []
+            self.hint_inputs = []
+
+        def classifyCandidate(self, payload):
+            self.classification_inputs.append(payload)
+            return super().classifyCandidate(payload)
+
+        def generateExercise(self, payload):
+            self.exercise_inputs.append(payload)
+            return super().generateExercise(payload)
+
+        def generateHints(self, payload):
+            self.hint_inputs.append(payload)
+            return super().generateHints(payload)
+
+    class SparseGuidanceRetriever(GuidanceRetriever):
+        def getGuidance(self, payload: GuidanceRequest) -> list[GuidanceSnippet]:
+            if payload.query == "missing-topic":
+                return [
+                    GuidanceSnippet(
+                        topic="refactoring_principles",
+                        summary="# Refactoring Principles",
+                        content="# Refactoring Principles\nPrefer readability over cleverness.\n",
+                        source="local",
+                    )
+                ]
+            return []
+
+    provider = RecordingProvider()
+    service, candidate_id = build_exercise_service(
+        provider=provider,
+        guidance_retriever=SparseGuidanceRetriever(),
+    )
+    exercise = service.create_exercise(candidate_id)
+    service.generate_hints(exercise.exercise_id)
+
+    assert provider.classification_inputs[0].guidance_snippets == [
+        "refactoring_principles: Prefer readability over cleverness."
+    ]
+    assert provider.exercise_inputs[0].guidance_snippets == [
+        "refactoring_principles: Prefer readability over cleverness."
+    ]
+    assert provider.hint_inputs[0].guidance_snippets == [
+        "refactoring_principles: Prefer readability over cleverness."
+    ]
+
+
+def build_exercise_service(
+    provider: MockProvider | None = None,
+    guidance_retriever: GuidanceRetriever | None = None,
+) -> tuple[ExerciseService, str]:
     candidate_service = CandidateService()
     submission = candidate_service.submit_code(
         SubmitCodeRequest(
@@ -134,7 +189,7 @@ def build_exercise_service(provider: MockProvider | None = None) -> tuple[Exerci
     )
     candidate_id = candidate_service.list_candidates(submission.submission_id).candidates[0].id
     service = ExerciseService(
-        guidance_retriever=LocalGuidanceRetriever(),
+        guidance_retriever=guidance_retriever or LocalGuidanceRetriever(),
         provider_service=ProviderService(providers=[provider or MockProvider()]),
     )
     return service, candidate_id
