@@ -111,9 +111,18 @@ def test_exercise_hints_and_attempt_smoke(client, monkeypatch):
 
     attempt_response = client.post(
         f"/submit-attempt/{exercise_id}",
-        json={"attempt_code": "def refactored():\n    pass\n"},
+        json={
+            "attempt_code": (
+                "def clarify_names(records, threshold):\n"
+                "    running_total = 0\n"
+                "    increment = threshold + 1\n"
+                "    return running_total + increment\n"
+            )
+        },
     )
     assert attempt_response.status_code == 200
+    assert attempt_response.json()["accepted"] is True
+    assert attempt_response.json()["status"] == "evaluated"
     assert app_state.exercises[exercise_id]["issue_label"] == "PoorNaming"
 
 

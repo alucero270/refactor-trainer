@@ -2,7 +2,7 @@ import pytest
 
 from app.guidance.local import LocalGuidanceRetriever
 from app.providers.mock import MockProvider
-from app.schemas.api import SubmitCodeRequest
+from app.schemas.api import SubmitAttemptRequest, SubmitCodeRequest
 from app.services.candidate_service import CandidateService
 from app.services.exercise_service import ExerciseService
 from app.services.provider_service import ProviderService
@@ -65,6 +65,57 @@ def test_exercise_service_blocks_hint_leakage():
 
     with pytest.raises(RuntimeError, match="Generated hint violated leakage guardrails."):
         service.generate_hints(exercise.exercise_id)
+
+
+def test_exercise_service_accepts_attempt_when_targeted_signal_improves():
+    service, candidate_id = build_exercise_service()
+    exercise = service.create_exercise(candidate_id)
+
+    response = service.submit_attempt(
+        exercise.exercise_id,
+        SubmitAttemptRequest(
+            attempt_code=(
+                "def clarify_names(records, threshold):\n"
+                "    running_total = 0\n"
+                "    increment = threshold + 1\n"
+                "    return running_total + increment\n"
+            )
+        ),
+    )
+
+    assert response.accepted is True
+    assert response.status == "evaluated"
+    assert response.feedback == (
+        "The targeted PoorNaming signal was reduced and the code still parses."
+    )
+
+
+def test_exercise_service_rejects_invalid_or_unchanged_attempts():
+    service, candidate_id = build_exercise_service()
+    exercise = service.create_exercise(candidate_id)
+
+    invalid_response = service.submit_attempt(
+        exercise.exercise_id,
+        SubmitAttemptRequest(attempt_code="def broken(:\n    pass\n"),
+    )
+    unchanged_response = service.submit_attempt(
+        exercise.exercise_id,
+        SubmitAttemptRequest(
+            attempt_code=(
+                "def process(data, value):\n"
+                "    total = 0\n"
+                "    thing = value + 1\n"
+                "    return total + thing\n"
+            )
+        ),
+    )
+
+    assert invalid_response.accepted is False
+    assert invalid_response.feedback == "The submitted attempt does not parse as valid Python yet."
+    assert unchanged_response.accepted is False
+    assert unchanged_response.feedback == (
+        "The submitted attempt is unchanged from the original candidate region."
+    )
 
 
 def build_exercise_service(provider: MockProvider | None = None) -> tuple[ExerciseService, str]:

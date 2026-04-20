@@ -73,7 +73,10 @@ def get_hints(exercise_id: str) -> HintResponse:
 def submit_attempt(
     exercise_id: str, payload: SubmitAttemptRequest
 ) -> AttemptFeedbackResponse:
-    return exercise_service.submit_attempt(exercise_id, payload)
+    try:
+        return exercise_service.submit_attempt(exercise_id, payload)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/providers", response_model=ProviderListResponse)
