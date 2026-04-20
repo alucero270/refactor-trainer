@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from app.providers.base import ModelProvider
 from app.providers.registry import build_provider_registry
 from app.schemas.api import ProviderHealthResponse, ProviderListResponse
+from app.storage.memory import app_state
 
 
 class ProviderService:
@@ -25,3 +26,14 @@ class ProviderService:
         return ProviderHealthResponse(
             providers=[provider.healthCheck().model_dump() for provider in self.providers]
         )
+
+    def resolve_default_provider(self) -> ModelProvider:
+        if len(self.providers) == 1:
+            return self.providers[0]
+
+        default_provider = app_state.provider_config.default_provider
+        for provider in self.providers:
+            if provider.name() == default_provider:
+                return provider
+
+        raise RuntimeError(f"Configured provider '{default_provider}' is not available.")

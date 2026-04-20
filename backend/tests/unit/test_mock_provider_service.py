@@ -12,3 +12,9 @@ def test_provider_service_can_run_against_mock_provider():
     assert provider_list.providers[0].kind == "mock"
     assert health.providers[0].provider == "mock"
     assert health.providers[0].available is True
+
+
+def test_provider_service_can_resolve_single_injected_provider():
+    service = ProviderService(providers=[MockProvider()])
+
+    assert service.resolve_default_provider().name() == "mock"

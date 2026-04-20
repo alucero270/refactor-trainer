@@ -34,12 +34,13 @@ class CandidateListResponse(BaseModel):
     candidates: list[Candidate]
 
 
-class CandidateResponse(BaseModel):
+class ExerciseResponse(BaseModel):
     exercise_id: str
     candidate_id: str
-    instructions: str
-    guidance_summary: str
-    status: str
+    title: str
+    description: str
+    difficulty: Literal["Easy", "Medium", "Hard"]
+    status: Literal["generated"]
 
 
 class HintResponse(BaseModel):

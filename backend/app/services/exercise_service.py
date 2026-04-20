@@ -1,34 +1,60 @@
 from uuid import uuid4
 
 from app.guidance.base import GuidanceRequest, GuidanceRetriever, GuidanceSnippet
-from app.schemas.api import AttemptFeedbackResponse, CandidateResponse, HintResponse, SubmitAttemptRequest
+from app.providers.contracts import CandidateClassificationInput, ExerciseGenerationInput
+from app.schemas.api import AttemptFeedbackResponse, ExerciseResponse, HintResponse, SubmitAttemptRequest
+from app.services.provider_service import ProviderService
 from app.storage.memory import app_state
 
 
 class ExerciseService:
-    def __init__(self, guidance_retriever: GuidanceRetriever) -> None:
+    def __init__(
+        self,
+        guidance_retriever: GuidanceRetriever,
+        provider_service: ProviderService | None = None,
+    ) -> None:
         self.guidance_retriever = guidance_retriever
+        self.provider_service = provider_service or ProviderService()
 
-    def create_exercise(self, candidate_id: str) -> CandidateResponse:
-        exercise_id = f"ex-{uuid4().hex[:8]}"
-        guidance = self.guidance_retriever.getGuidance(
-            GuidanceRequest(
+    def create_exercise(self, candidate_id: str) -> ExerciseResponse:
+        candidate = self._find_candidate(candidate_id)
+        provider = self.provider_service.resolve_default_provider()
+        classification = provider.classifyCandidate(
+            CandidateClassificationInput(
                 language="python",
-                query="exercise_authoring_rules",
-                maxSnippets=1,
+                candidate_code=candidate["candidate_code"],
+                candidate_region=candidate["candidate_region"],
+                detection_summary=candidate["detection_summary"],
+                heuristic_label=candidate["smell"],
             )
         )
-        guidance_summary = self._guidance_summary(guidance)
+        generated_exercise = provider.generateExercise(
+            ExerciseGenerationInput(
+                language="python",
+                candidate_code=candidate["candidate_code"],
+                candidate_region=candidate["candidate_region"],
+                issue_label=classification.label,
+                classification_rationale=classification.rationale,
+            )
+        )
+        exercise_id = f"ex-{uuid4().hex[:8]}"
         app_state.exercises[exercise_id] = {
             "candidate_id": candidate_id,
-            "guidance_excerpt": guidance_summary,
+            "candidate_code": candidate["candidate_code"],
+            "candidate_region": candidate["candidate_region"],
+            "issue_label": classification.label,
+            "classification_rationale": classification.rationale,
+            "title": generated_exercise.title,
+            "description": generated_exercise.description,
+            "difficulty": generated_exercise.difficulty,
         }
-        return CandidateResponse(
+        return ExerciseResponse(
             exercise_id=exercise_id,
             candidate_id=candidate_id,
-            instructions="Placeholder exercise for the selected candidate.",
-            guidance_summary=guidance_summary,
-            status="stub",
+            title=generated_exercise.title,
+            description=generated_exercise.description,
+            difficulty=generated_exercise.difficulty,
+            status="generated",
         )
 
     def generate_hints(self, exercise_id: str) -> HintResponse:
@@ -67,3 +93,11 @@ class ExerciseService:
     @staticmethod
     def _guidance_summary(guidance: list[GuidanceSnippet]) -> str:
         return guidance[0].summary
+
+    @staticmethod
+    def _find_candidate(candidate_id: str) -> dict:
+        for submission in app_state.submissions.values():
+            for candidate in submission.get("detected_candidates", []):
+                if candidate["id"] == candidate_id:
+                    return candidate
+        raise LookupError(f"Candidate '{candidate_id}' was not found.")
