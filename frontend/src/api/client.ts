@@ -11,16 +11,6 @@ async function getJson<T>(path: string): Promise<T> {
 }
 
 export async function listProviders(): Promise<ProviderSummary[]> {
-  try {
-    const payload = await getJson<{ providers: ProviderSummary[] }>("/providers");
-    return payload.providers;
-  } catch {
-    return [
-      { name: "ollama", kind: "local", supports_local: true },
-      { name: "openai", kind: "remote", supports_local: false },
-      { name: "anthropic", kind: "remote", supports_local: false },
-      { name: "mcp", kind: "mcp", supports_local: false },
-    ];
-  }
+  const payload = await getJson<{ providers: ProviderSummary[] }>("/providers");
+  return payload.providers;
 }
-
