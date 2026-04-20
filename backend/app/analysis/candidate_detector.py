@@ -15,6 +15,14 @@ class DetectedCandidate(Candidate):
     detection_summary: str
 
 
+class CandidateCodeMetrics(BaseModel):
+    line_span: int
+    statement_count: int
+    max_nesting: int
+    duplicate_statement_count: int
+    poor_names: list[str]
+
+
 class PythonCandidateDetector:
     _priority = {
         "LongMethod": 0,
@@ -25,13 +33,7 @@ class PythonCandidateDetector:
     _generic_names = {"data", "info", "item", "obj", "process", "run", "stuff", "temp", "thing", "value"}
 
     def detect(self, code: str) -> list[DetectedCandidate]:
-        try:
-            module = ast.parse(code)
-        except SyntaxError as exc:
-            detail = exc.msg
-            if exc.lineno is not None:
-                detail = f"{detail} at line {exc.lineno}"
-            raise ValueError(f"Submitted code is not valid Python syntax: {detail}.") from exc
+        module = self._parse_module(code)
 
         lines = code.splitlines()
         candidates: list[DetectedCandidate] = []
@@ -51,15 +53,36 @@ class PythonCandidateDetector:
         )
         return ranked[:3]
 
+    def inspect_candidate_code(self, code: str) -> CandidateCodeMetrics:
+        module = self._parse_module(code)
+        function = next(
+            (
+                node
+                for node in module.body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            ),
+            None,
+        )
+        if function is None:
+            return CandidateCodeMetrics(
+                line_span=0,
+                statement_count=0,
+                max_nesting=0,
+                duplicate_statement_count=0,
+                poor_names=[],
+            )
+        return self._metrics_for_function(function)
+
     def _detect_for_function(
         self, node: ast.FunctionDef | ast.AsyncFunctionDef, lines: list[str]
     ) -> list[DetectedCandidate]:
         candidates: list[DetectedCandidate] = []
-        line_span = self._line_span(node)
-        statement_count = self._statement_count(node)
-        max_depth = self._max_nesting(node)
-        duplicate_count = self._duplicate_statement_count(node)
-        poor_names = self._poor_names(node)
+        metrics = self._metrics_for_function(node)
+        line_span = metrics.line_span
+        statement_count = metrics.statement_count
+        max_depth = metrics.max_nesting
+        duplicate_count = metrics.duplicate_statement_count
+        poor_names = metrics.poor_names
 
         if line_span >= 12 or statement_count >= 8:
             candidates.append(
@@ -122,6 +145,17 @@ class PythonCandidateDetector:
             )
 
         return candidates
+
+    def _metrics_for_function(
+        self, node: ast.FunctionDef | ast.AsyncFunctionDef
+    ) -> CandidateCodeMetrics:
+        return CandidateCodeMetrics(
+            line_span=self._line_span(node),
+            statement_count=self._statement_count(node),
+            max_nesting=self._max_nesting(node),
+            duplicate_statement_count=self._duplicate_statement_count(node),
+            poor_names=self._poor_names(node),
+        )
 
     def _build_candidate(
         self,
@@ -225,3 +259,13 @@ class PythonCandidateDetector:
         for candidate in candidates:
             deduped[(candidate.smell, candidate.start_line, candidate.end_line)] = candidate
         return list(deduped.values())
+
+    @staticmethod
+    def _parse_module(code: str) -> ast.Module:
+        try:
+            return ast.parse(code)
+        except SyntaxError as exc:
+            detail = exc.msg
+            if exc.lineno is not None:
+                detail = f"{detail} at line {exc.lineno}"
+            raise ValueError(f"Submitted code is not valid Python syntax: {detail}.") from exc

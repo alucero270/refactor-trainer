@@ -51,3 +51,15 @@ def test_candidate_detector_rejects_invalid_python_safely():
 
     with pytest.raises(ValueError, match="Submitted code is not valid Python syntax"):
         detector.detect("def broken(:\n    pass\n")
+
+
+def test_candidate_detector_can_inspect_candidate_metrics():
+    detector = PythonCandidateDetector()
+
+    metrics = detector.inspect_candidate_code(DETECTION_SAMPLE)
+
+    assert metrics.line_span == 16
+    assert metrics.statement_count == 15
+    assert metrics.max_nesting == 4
+    assert metrics.duplicate_statement_count == 1
+    assert metrics.poor_names == ["process", "temp", "thing", "item"]

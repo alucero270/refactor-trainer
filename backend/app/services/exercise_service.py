@@ -1,6 +1,7 @@
 import re
 from uuid import uuid4
 
+from app.analysis.candidate_detector import PythonCandidateDetector
 from app.guidance.base import GuidanceRequest, GuidanceRetriever, GuidanceSnippet
 from app.providers.contracts import (
     CandidateClassificationInput,
@@ -20,6 +21,7 @@ class ExerciseService:
     ) -> None:
         self.guidance_retriever = guidance_retriever
         self.provider_service = provider_service or ProviderService()
+        self.detector = PythonCandidateDetector()
 
     def create_exercise(self, candidate_id: str) -> ExerciseResponse:
         candidate = self._find_candidate(candidate_id)
@@ -102,14 +104,38 @@ class ExerciseService:
     def submit_attempt(
         self, exercise_id: str, payload: SubmitAttemptRequest
     ) -> AttemptFeedbackResponse:
+        exercise = self._find_exercise(exercise_id)
+
+        try:
+            original_metrics = self.detector.inspect_candidate_code(exercise["candidate_code"])
+            attempt_metrics = self.detector.inspect_candidate_code(payload.attempt_code)
+        except ValueError:
+            return AttemptFeedbackResponse(
+                exercise_id=exercise_id,
+                accepted=False,
+                feedback="The submitted attempt does not parse as valid Python yet.",
+                status="evaluated",
+            )
+
+        if self._normalize_code(payload.attempt_code) == self._normalize_code(exercise["candidate_code"]):
+            return AttemptFeedbackResponse(
+                exercise_id=exercise_id,
+                accepted=False,
+                feedback="The submitted attempt is unchanged from the original candidate region.",
+                status="evaluated",
+            )
+
+        accepted = self._issue_improved(
+            issue_label=exercise["issue_label"],
+            original_metrics=original_metrics,
+            attempt_metrics=attempt_metrics,
+        )
+        feedback = self._attempt_feedback(exercise["issue_label"], accepted)
         return AttemptFeedbackResponse(
             exercise_id=exercise_id,
-            accepted=False,
-            feedback=(
-                "Attempt evaluation is intentionally stubbed. "
-                f"Received {len(payload.attempt_code)} characters for future analysis."
-            ),
-            status="stub",
+            accepted=accepted,
+            feedback=feedback,
+            status="evaluated",
         )
 
     @staticmethod
@@ -156,3 +182,32 @@ class ExerciseService:
             raise RuntimeError("Generated hint violated leakage guardrails.")
 
         return cleaned_hint
+
+    @staticmethod
+    def _normalize_code(code: str) -> str:
+        normalized = code.replace("\r\n", "\n").replace("\r", "\n").strip()
+        return normalized
+
+    @staticmethod
+    def _issue_improved(*, issue_label: str, original_metrics, attempt_metrics) -> bool:
+        if issue_label == "PoorNaming":
+            return len(attempt_metrics.poor_names) < len(original_metrics.poor_names)
+        if issue_label == "LongMethod":
+            return (
+                attempt_metrics.line_span < original_metrics.line_span
+                or attempt_metrics.statement_count < original_metrics.statement_count
+            )
+        if issue_label == "DeepNesting":
+            return attempt_metrics.max_nesting < original_metrics.max_nesting
+        if issue_label == "DuplicatedCode":
+            return (
+                attempt_metrics.duplicate_statement_count
+                < original_metrics.duplicate_statement_count
+            )
+        return False
+
+    @staticmethod
+    def _attempt_feedback(issue_label: str, accepted: bool) -> str:
+        if accepted:
+            return f"The targeted {issue_label} signal was reduced and the code still parses."
+        return f"The submitted attempt parses, but the targeted {issue_label} signal did not improve yet."
