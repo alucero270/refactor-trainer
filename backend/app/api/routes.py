@@ -10,6 +10,7 @@ from app.schemas.api import (
     GitHubRepoTreeResponse,
     GitHubReposResponse,
     HealthResponse,
+    HintResponse,
     ProviderConfigPayload,
     ProviderConfigResponse,
     ProviderHealthResponse,
@@ -58,9 +59,14 @@ def create_exercise(candidate_id: str) -> ExerciseResponse:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-@router.get("/hints/{exercise_id}")
-def get_hints(exercise_id: str) -> dict:
-    return exercise_service.generate_hints(exercise_id).model_dump()
+@router.get("/hints/{exercise_id}", response_model=HintResponse)
+def get_hints(exercise_id: str) -> HintResponse:
+    try:
+        return exercise_service.generate_hints(exercise_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.post("/submit-attempt/{exercise_id}", response_model=AttemptFeedbackResponse)

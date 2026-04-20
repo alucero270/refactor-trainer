@@ -96,8 +96,18 @@ def test_exercise_hints_and_attempt_smoke(client, monkeypatch):
     assert exercise_response.json()["title"] == "Practice improving PoorNaming"
 
     exercise_id = exercise_response.json()["exercise_id"]
-    hints_response = client.get(f"/hints/{exercise_id}")
-    assert hints_response.status_code == 200
+    first_hints_response = client.get(f"/hints/{exercise_id}")
+    assert first_hints_response.status_code == 200
+    assert first_hints_response.json()["hints"] == [
+        "Start by isolating the part of the code that shows the PoorNaming smell."
+    ]
+
+    second_hints_response = client.get(f"/hints/{exercise_id}")
+    assert second_hints_response.status_code == 200
+    assert second_hints_response.json()["hints"] == [
+        "Start by isolating the part of the code that shows the PoorNaming smell.",
+        "Extract one cohesive responsibility first, then reassess whether the main flow reads more clearly.",
+    ]
 
     attempt_response = client.post(
         f"/submit-attempt/{exercise_id}",
