@@ -26,6 +26,7 @@ class ExerciseService:
     def create_exercise(self, candidate_id: str) -> ExerciseResponse:
         candidate = self._find_candidate(candidate_id)
         provider = self.provider_service.resolve_default_provider()
+        classification_guidance = self._classification_guidance(candidate["smell"])
         classification = provider.classifyCandidate(
             CandidateClassificationInput(
                 language="python",
@@ -33,7 +34,12 @@ class ExerciseService:
                 candidate_region=candidate["candidate_region"],
                 detection_summary=candidate["detection_summary"],
                 heuristic_label=candidate["smell"],
+                guidance_snippets=classification_guidance,
             )
+        )
+        exercise_guidance = self._exercise_guidance(
+            issue_label=classification.label,
+            difficulty="Medium",
         )
         generated_exercise = provider.generateExercise(
             ExerciseGenerationInput(
@@ -42,6 +48,7 @@ class ExerciseService:
                 candidate_region=candidate["candidate_region"],
                 issue_label=classification.label,
                 classification_rationale=classification.rationale,
+                guidance_snippets=exercise_guidance,
             )
         )
         exercise_id = f"ex-{uuid4().hex[:8]}"
@@ -67,7 +74,7 @@ class ExerciseService:
 
     def generate_hints(self, exercise_id: str) -> HintResponse:
         exercise = self._find_exercise(exercise_id)
-        guidance = self.guidance_retriever.getGuidance(
+        guidance = self._guidance_with_fallback(
             GuidanceRequest(
                 language="python",
                 query="hint_policy",
@@ -80,6 +87,7 @@ class ExerciseService:
         if len(revealed_hints) < 2:
             provider = self.provider_service.resolve_default_provider()
             next_level = len(revealed_hints) + 1
+            hint_guidance = self._hint_guidance(exercise["issue_label"])
             generated_hint = provider.generateHints(
                 HintGenerationInput(
                     language="python",
@@ -88,6 +96,7 @@ class ExerciseService:
                     hint_level=next_level,
                     candidate_code=exercise["candidate_code"],
                     issue_label=exercise["issue_label"],
+                    guidance_snippets=hint_guidance,
                 )
             )
             sanitized_hint = self._validate_hint(generated_hint.hint, exercise["candidate_code"])
@@ -211,3 +220,70 @@ class ExerciseService:
         if accepted:
             return f"The targeted {issue_label} signal was reduced and the code still parses."
         return f"The submitted attempt parses, but the targeted {issue_label} signal did not improve yet."
+
+    def _classification_guidance(self, issue_label: str) -> list[str]:
+        return self._collect_guidance(
+            GuidanceRequest(
+                language="python",
+                query="code_smell_taxonomy",
+                issueType=issue_label,
+                maxSnippets=2,
+            )
+        )
+
+    def _exercise_guidance(self, *, issue_label: str, difficulty: str) -> list[str]:
+        return self._collect_guidance(
+            GuidanceRequest(
+                language="python",
+                query="refactoring_principles",
+                maxSnippets=1,
+            ),
+            GuidanceRequest(
+                language="python",
+                query="exercise_authoring_rules",
+                issueType=issue_label,
+                difficulty=difficulty,
+                maxSnippets=3,
+            ),
+        )
+
+    def _hint_guidance(self, issue_label: str) -> list[str]:
+        return self._collect_guidance(
+            GuidanceRequest(
+                language="python",
+                query="hint_policy",
+                issueType=issue_label,
+                maxSnippets=2,
+            )
+        )
+
+    def _collect_guidance(self, *requests: GuidanceRequest) -> list[str]:
+        snippets: list[GuidanceSnippet] = []
+        seen_topics: set[str] = set()
+
+        for request in requests:
+            for snippet in self._guidance_with_fallback(request):
+                if snippet.topic in seen_topics:
+                    continue
+                seen_topics.add(snippet.topic)
+                snippets.append(snippet)
+
+        return [self._format_guidance_snippet(snippet) for snippet in snippets]
+
+    def _guidance_with_fallback(self, request: GuidanceRequest) -> list[GuidanceSnippet]:
+        guidance = self.guidance_retriever.getGuidance(request)
+        if guidance:
+            return guidance
+        return self.guidance_retriever.getGuidance(
+            GuidanceRequest(language=request.language, query="missing-topic", maxSnippets=1)
+        )
+
+    @staticmethod
+    def _format_guidance_snippet(snippet: GuidanceSnippet) -> str:
+        meaningful_lines = [
+            line.strip()
+            for line in snippet.content.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        excerpt = " ".join(meaningful_lines[:2]) if meaningful_lines else snippet.summary
+        return f"{snippet.topic}: {excerpt}"
