@@ -1,15 +1,26 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { listCandidates } from "../api/client";
 import { SectionCard } from "../components/SectionCard";
+import { useWorkflowState } from "../providers/WorkflowStateProvider";
 import type { Candidate } from "../types/api";
 
 export function CandidateListPage() {
-  const [submissionId, setSubmissionId] = useState("");
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [selectedCandidateId, setSelectedCandidateId] = useState("");
+  const navigate = useNavigate();
+  const workflow = useWorkflowState();
+  const [submissionId, setSubmissionId] = useState(workflow.submission?.submission_id ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (workflow.submission?.submission_id) {
+      setSubmissionId(workflow.submission.submission_id);
+      if (workflow.candidates.length === 0) {
+        void loadCandidates(workflow.submission.submission_id);
+      }
+    }
+  }, [workflow.submission?.submission_id]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -20,21 +31,26 @@ export function CandidateListPage() {
       return;
     }
 
+    await loadCandidates(normalizedId);
+  }
+
+  async function loadCandidates(activeSubmissionId: string) {
     setLoading(true);
     setError(null);
-    setSelectedCandidateId("");
 
     try {
-      setCandidates(await listCandidates(normalizedId));
+      workflow.setCandidates(await listCandidates(activeSubmissionId));
     } catch (error) {
-      setCandidates([]);
+      workflow.setCandidates([]);
       setError(error instanceof Error ? error.message : "Candidates could not be loaded.");
     } finally {
       setLoading(false);
     }
   }
 
-  const selectedCandidate = candidates.find((candidate) => candidate.id === selectedCandidateId);
+  function handleCandidateSelect(candidate: Candidate) {
+    workflow.selectCandidate(candidate);
+  }
 
   return (
     <div className="content-grid">
@@ -49,14 +65,14 @@ export function CandidateListPage() {
           </button>
         </form>
       </SectionCard>
-      {candidates.length > 0 ? (
-        <SectionCard title="Ranked Candidates" eyebrow={`${candidates.length} returned`}>
+      {workflow.candidates.length > 0 ? (
+        <SectionCard title="Ranked Candidates" eyebrow={`${workflow.candidates.length} returned`}>
           <div className="candidate-list" role="list">
-            {candidates.map((candidate, index) => (
+            {workflow.candidates.map((candidate, index) => (
               <button
-                className={candidate.id === selectedCandidateId ? "candidate-row selected" : "candidate-row"}
+                className={candidate.id === workflow.selectedCandidate?.id ? "candidate-row selected" : "candidate-row"}
                 key={candidate.id}
-                onClick={() => setSelectedCandidateId(candidate.id)}
+                onClick={() => handleCandidateSelect(candidate)}
                 role="listitem"
                 type="button"
               >
@@ -73,14 +89,17 @@ export function CandidateListPage() {
           </div>
         </SectionCard>
       ) : null}
-      {selectedCandidate ? (
+      {workflow.selectedCandidate ? (
         <SectionCard title="Selected Candidate" eyebrow="Ready for exercise generation">
           <div className="stack">
-            <strong>{selectedCandidate.title}</strong>
-            <p>{selectedCandidate.summary}</p>
+            <strong>{workflow.selectedCandidate.title}</strong>
+            <p>{workflow.selectedCandidate.summary}</p>
             <p className="muted">
-              Candidate id <code>{selectedCandidate.id}</code>
+              Candidate id <code>{workflow.selectedCandidate.id}</code>
             </p>
+            <button className="primary-button" type="button" onClick={() => navigate("/exercise")}>
+              Continue to exercise
+            </button>
           </div>
         </SectionCard>
       ) : null}
