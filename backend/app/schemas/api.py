@@ -162,6 +162,19 @@ class ProviderHealthResponse(BaseModel):
     providers: list[ProviderHealthItem]
 
 
+class GitHubAccount(BaseModel):
+    login: str
+
+
+class GitHubConnectResponse(BaseModel):
+    status: Literal["connected", "not_connected"]
+    auth_mode: Literal["bearer_token"]
+    required_permissions: list[str]
+    capabilities: list[str]
+    account: GitHubAccount | None = None
+    message: str
+
+
 class GitHubRepo(BaseModel):
     id: str
     name: str
