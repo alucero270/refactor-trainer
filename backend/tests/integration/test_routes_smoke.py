@@ -1,3 +1,5 @@
+import json
+
 from app.providers.contracts import ProviderHealth
 from app.providers.mock import MockProvider
 from app.providers.ollama import OllamaProvider
@@ -126,7 +128,7 @@ def test_exercise_hints_and_attempt_smoke(client, monkeypatch):
     assert app_state.exercises[exercise_id]["issue_label"] == "PoorNaming"
 
 
-def test_provider_routes_smoke(client, monkeypatch):
+def test_provider_routes_smoke(client, monkeypatch, provider_config_path):
     def fake_ollama_health(self):
         return ProviderHealth(
             provider="ollama",
@@ -159,6 +161,11 @@ def test_provider_routes_smoke(client, monkeypatch):
         },
     )
     assert update_response.status_code == 200
+    assert "openai-test-key" not in update_response.text
+    assert update_response.json()["config"]["providers"]["openai"]["api_key"] == "**********"
+
+    stored_config = json.loads(provider_config_path.read_text(encoding="utf-8"))
+    assert stored_config["providers"]["openai"]["api_key"] == "openai-test-key"
 
     health_response = client.get("/provider/health")
     assert health_response.status_code == 200
