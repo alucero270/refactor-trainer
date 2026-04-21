@@ -1,16 +1,49 @@
-import type { ProviderSummary } from "../types/api";
+import type { ProviderConfig, ProviderHealthItem, ProviderSummary } from "../types/api";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
-async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`);
+async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...init?.headers,
+    },
+    ...init,
+  });
+
   if (!response.ok) {
-    throw new Error(`Request failed for ${path}: ${response.status}`);
+    let detail = response.statusText;
+    try {
+      const payload = (await response.json()) as { detail?: string };
+      detail = payload.detail ?? detail;
+    } catch {
+      // Keep the HTTP status text when the backend does not return JSON.
+    }
+    throw new Error(`Request failed for ${path}: ${response.status} ${detail}`);
   }
+
   return (await response.json()) as T;
 }
 
 export async function listProviders(): Promise<ProviderSummary[]> {
-  const payload = await getJson<{ providers: ProviderSummary[] }>("/providers");
+  const payload = await requestJson<{ providers: ProviderSummary[] }>("/providers");
+  return payload.providers;
+}
+
+export async function getProviderConfig(): Promise<ProviderConfig> {
+  const payload = await requestJson<{ config: ProviderConfig }>("/provider/config");
+  return payload.config;
+}
+
+export async function saveProviderConfig(config: ProviderConfig): Promise<ProviderConfig> {
+  const payload = await requestJson<{ config: ProviderConfig }>("/provider/config", {
+    method: "PUT",
+    body: JSON.stringify({ config }),
+  });
+  return payload.config;
+}
+
+export async function getProviderHealth(): Promise<ProviderHealthItem[]> {
+  const payload = await requestJson<{ providers: ProviderHealthItem[] }>("/provider/health");
   return payload.providers;
 }

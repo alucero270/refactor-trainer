@@ -1,7 +1,45 @@
+export type ProviderName = "ollama" | "openai" | "anthropic" | "mcp";
+
 export type ProviderSummary = {
-  name: string;
+  name: ProviderName;
   kind: string;
   supports_local: boolean;
+};
+
+export type ProviderConfig = {
+  default_provider: ProviderName;
+  configured_providers: ProviderName[];
+  providers: {
+    ollama: {
+      base_url: string;
+      model: string | null;
+    };
+    openai: {
+      api_key: string | null;
+      model: string | null;
+      base_url: string | null;
+    };
+    anthropic: {
+      api_key: string | null;
+      model: string | null;
+      base_url: string | null;
+    };
+    mcp: {
+      server_url: string | null;
+      model: string | null;
+    };
+  };
+};
+
+export type ProviderHealthItem = {
+  provider: ProviderName;
+  status: "ready" | "unavailable";
+  available: boolean;
+  message: string;
+  failure: {
+    code: string;
+    detail: string;
+  } | null;
 };
 
 export type Candidate = {
@@ -26,4 +64,3 @@ export type HintBundle = {
   guidance_summary: string;
   status: string;
 };
-
