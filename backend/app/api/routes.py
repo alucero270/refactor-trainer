@@ -27,7 +27,9 @@ from app.services.github_service import (
     GitHubApiError,
     GitHubConnectionError,
     GitHubService,
+    GitHubToken,
     extract_bearer_token,
+    redact_secret,
 )
 from app.services.provider_service import ProviderService
 from app.storage.memory import app_state
@@ -111,26 +113,30 @@ def provider_health() -> ProviderHealthResponse:
 
 @router.get("/github/connect", response_model=GitHubConnectResponse)
 def github_connect(authorization: str | None = Header(default=None)) -> GitHubConnectResponse:
+    token: GitHubToken | None = None
     try:
         token = extract_bearer_token(authorization)
         return github_service.connection_status(token)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except GitHubConnectionError as exc:
-        raise HTTPException(status_code=401, detail=str(exc)) from exc
+        raise HTTPException(status_code=401, detail=redact_secret(str(exc), token)) from exc
 
 
 @router.get("/github/repos", response_model=GitHubReposResponse)
 def github_repos(authorization: str | None = Header(default=None)) -> GitHubReposResponse:
+    token: GitHubToken | None = None
     try:
         token = _require_github_token(authorization)
         return github_service.list_repositories(token)
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except GitHubConnectionError as exc:
-        raise HTTPException(status_code=401, detail=str(exc)) from exc
+        raise HTTPException(status_code=401, detail=redact_secret(str(exc), token)) from exc
     except GitHubApiError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        raise HTTPException(
+            status_code=exc.status_code, detail=redact_secret(exc.detail, token)
+        ) from exc
 
 
 @router.get("/github/repo/{repo_id}/tree", response_model=GitHubRepoTreeResponse)
@@ -140,15 +146,18 @@ def github_repo_tree(
     path: str = Query(default=""),
     ref: str | None = Query(default=None),
 ) -> GitHubRepoTreeResponse:
+    token: GitHubToken | None = None
     try:
         token = _require_github_token(authorization)
         return github_service.list_tree(token=token, repo_id=repo_id, path=path, ref=ref)
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except GitHubConnectionError as exc:
-        raise HTTPException(status_code=401, detail=str(exc)) from exc
+        raise HTTPException(status_code=401, detail=redact_secret(str(exc), token)) from exc
     except GitHubApiError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        raise HTTPException(
+            status_code=exc.status_code, detail=redact_secret(exc.detail, token)
+        ) from exc
 
 
 @router.post("/github/import-file", response_model=GitHubImportResponse)
@@ -162,6 +171,7 @@ def github_import_file(
     if not filename:
         raise HTTPException(status_code=400, detail="GitHub import requires one selected file.")
 
+    token: GitHubToken | None = None
     try:
         token = _require_github_token(authorization)
         imported_file = github_service.fetch_file(
@@ -176,9 +186,11 @@ def github_import_file(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except GitHubConnectionError as exc:
-        raise HTTPException(status_code=401, detail=str(exc)) from exc
+        raise HTTPException(status_code=401, detail=redact_secret(str(exc), token)) from exc
     except GitHubApiError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        raise HTTPException(
+            status_code=exc.status_code, detail=redact_secret(exc.detail, token)
+        ) from exc
 
     return GitHubImportResponse(
         repo_id=payload.repo_id,
@@ -190,7 +202,7 @@ def github_import_file(
     )
 
 
-def _require_github_token(authorization: str | None) -> str:
+def _require_github_token(authorization: str | None) -> GitHubToken:
     token = extract_bearer_token(authorization)
     if token is None:
         raise ValueError("GitHub bearer token is required for targeted import browsing.")

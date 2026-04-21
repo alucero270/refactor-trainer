@@ -195,22 +195,22 @@ def test_github_repo_browsing_routes_use_connection_token(client, monkeypatch):
     )
 
     class FakeGitHubClient:
-        def list_repositories(self, token: str) -> list[GitHubRepository]:
-            assert token == "github-secret-token"
+        def list_repositories(self, token) -> list[GitHubRepository]:
+            assert token.get_secret_value() == "github-secret-token"
             return [GitHubRepository(id="123", name="trainer", owner="octocat")]
 
-        def get_authenticated_user(self, token: str):
+        def get_authenticated_user(self, token):
             raise AssertionError("repo browsing should not revalidate the account")
 
-        def get_repository(self, token: str, repo_id: str) -> GitHubRepositoryRef:
-            assert token == "github-secret-token"
+        def get_repository(self, token, repo_id: str) -> GitHubRepositoryRef:
+            assert token.get_secret_value() == "github-secret-token"
             assert repo_id == "123"
             return GitHubRepositoryRef(owner="octocat", name="trainer", default_branch="main")
 
         def list_directory(
-            self, token: str, repository: GitHubRepositoryRef, path: str, ref: str | None
+            self, token, repository: GitHubRepositoryRef, path: str, ref: str | None
         ) -> list[GitHubTreeEntry]:
-            assert token == "github-secret-token"
+            assert token.get_secret_value() == "github-secret-token"
             assert repository.owner == "octocat"
             assert path == "src"
             assert ref == "main"
@@ -220,7 +220,7 @@ def test_github_repo_browsing_routes_use_connection_token(client, monkeypatch):
             ]
 
         def get_file_content(
-            self, token: str, repository: GitHubRepositoryRef, path: str, ref: str | None
+            self, token, repository: GitHubRepositoryRef, path: str, ref: str | None
         ) -> GitHubFileContent:
             raise AssertionError("repo browsing should not fetch file content")
 
@@ -263,15 +263,15 @@ def test_github_import_file_routes_content_through_submit_code(client, monkeypat
     from app.services.github_service import GitHubFileContent, GitHubRepositoryRef
 
     class FakeGitHubClient:
-        def get_repository(self, token: str, repo_id: str) -> GitHubRepositoryRef:
-            assert token == "github-secret-token"
+        def get_repository(self, token, repo_id: str) -> GitHubRepositoryRef:
+            assert token.get_secret_value() == "github-secret-token"
             assert repo_id == "123"
             return GitHubRepositoryRef(owner="octocat", name="trainer", default_branch="main")
 
         def get_file_content(
-            self, token: str, repository: GitHubRepositoryRef, path: str, ref: str | None
+            self, token, repository: GitHubRepositoryRef, path: str, ref: str | None
         ) -> GitHubFileContent:
-            assert token == "github-secret-token"
+            assert token.get_secret_value() == "github-secret-token"
             assert repository.owner == "octocat"
             assert path == "src/example.py"
             assert ref == "main"
@@ -285,13 +285,13 @@ def test_github_import_file_routes_content_through_submit_code(client, monkeypat
                 ),
             )
 
-        def get_authenticated_user(self, token: str):
+        def get_authenticated_user(self, token):
             raise AssertionError("import should not revalidate the account")
 
-        def list_repositories(self, token: str):
+        def list_repositories(self, token):
             raise AssertionError("import should not list repositories")
 
-        def list_directory(self, token: str, repository: GitHubRepositoryRef, path: str, ref: str):
+        def list_directory(self, token, repository: GitHubRepositoryRef, path: str, ref: str):
             raise AssertionError("import should not browse trees")
 
     monkeypatch.setattr(routes.github_service, "client", FakeGitHubClient())
@@ -320,11 +320,11 @@ def test_github_import_file_preserves_submit_code_validation(client, monkeypatch
     from app.services.github_service import GitHubFileContent, GitHubRepositoryRef
 
     class FakeGitHubClient:
-        def get_repository(self, token: str, repo_id: str) -> GitHubRepositoryRef:
+        def get_repository(self, token, repo_id: str) -> GitHubRepositoryRef:
             return GitHubRepositoryRef(owner="octocat", name="trainer", default_branch="main")
 
         def get_file_content(
-            self, token: str, repository: GitHubRepositoryRef, path: str, ref: str | None
+            self, token, repository: GitHubRepositoryRef, path: str, ref: str | None
         ) -> GitHubFileContent:
             return GitHubFileContent(path="src/broken.py", content="def broken(:\n")
 
@@ -349,3 +349,22 @@ def test_github_import_file_rejects_non_python_selection(client):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Only single Python files are supported."
+
+
+def test_github_import_errors_redact_token_from_response(client, monkeypatch):
+    from app.api import routes
+    from app.services.github_service import GitHubApiError
+
+    class FakeGitHubClient:
+        def list_repositories(self, token):
+            raise GitHubApiError(502, f"upstream echoed {token.get_secret_value()}")
+
+    monkeypatch.setattr(routes.github_service, "client", FakeGitHubClient())
+
+    response = client.get(
+        "/github/repos", headers={"Authorization": "Bearer github-secret-token"}
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "upstream echoed [redacted]"
+    assert "github-secret-token" not in response.text

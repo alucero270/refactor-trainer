@@ -5,9 +5,11 @@ from app.services.github_service import (
     GitHubRepository,
     GitHubRepositoryRef,
     GitHubService,
+    GitHubToken,
     GitHubTreeEntry,
     GitHubUser,
     extract_bearer_token,
+    redact_secret,
 )
 
 
@@ -15,26 +17,26 @@ class FakeGitHubClient:
     def __init__(self) -> None:
         self.tokens: list[str] = []
 
-    def get_authenticated_user(self, token: str) -> GitHubUser:
-        self.tokens.append(token)
+    def get_authenticated_user(self, token: GitHubToken) -> GitHubUser:
+        self.tokens.append(token.get_secret_value())
         return GitHubUser(login="octocat")
 
-    def list_repositories(self, token: str) -> list[GitHubRepository]:
-        self.tokens.append(token)
+    def list_repositories(self, token: GitHubToken) -> list[GitHubRepository]:
+        self.tokens.append(token.get_secret_value())
         return [
             GitHubRepository(id="123", name="trainer", owner="octocat"),
             GitHubRepository(id="456", name="practice", owner="octo-org"),
         ]
 
-    def get_repository(self, token: str, repo_id: str) -> GitHubRepositoryRef:
-        self.tokens.append(token)
+    def get_repository(self, token: GitHubToken, repo_id: str) -> GitHubRepositoryRef:
+        self.tokens.append(token.get_secret_value())
         assert repo_id == "123"
         return GitHubRepositoryRef(owner="octocat", name="trainer", default_branch="main")
 
     def list_directory(
-        self, token: str, repository: GitHubRepositoryRef, path: str, ref: str | None
+        self, token: GitHubToken, repository: GitHubRepositoryRef, path: str, ref: str | None
     ) -> list[GitHubTreeEntry]:
-        self.tokens.append(token)
+        self.tokens.append(token.get_secret_value())
         assert repository == GitHubRepositoryRef(
             owner="octocat", name="trainer", default_branch="main"
         )
@@ -46,9 +48,9 @@ class FakeGitHubClient:
         ]
 
     def get_file_content(
-        self, token: str, repository: GitHubRepositoryRef, path: str, ref: str | None
+        self, token: GitHubToken, repository: GitHubRepositoryRef, path: str, ref: str | None
     ) -> GitHubFileContent:
-        self.tokens.append(token)
+        self.tokens.append(token.get_secret_value())
         assert repository == GitHubRepositoryRef(
             owner="octocat", name="trainer", default_branch="main"
         )
@@ -78,7 +80,9 @@ def test_connection_status_without_token_describes_targeted_import_only():
 def test_connection_status_validates_token_without_returning_secret():
     fake_client = FakeGitHubClient()
 
-    response = GitHubService(client=fake_client).connection_status("github-secret-token")
+    response = GitHubService(client=fake_client).connection_status(
+        GitHubToken.from_raw("github-secret-token")
+    )
 
     assert fake_client.tokens == ["github-secret-token"]
     assert response.status == "connected"
@@ -90,7 +94,9 @@ def test_connection_status_validates_token_without_returning_secret():
 def test_list_repositories_maps_client_results():
     fake_client = FakeGitHubClient()
 
-    response = GitHubService(client=fake_client).list_repositories("github-secret-token")
+    response = GitHubService(client=fake_client).list_repositories(
+        GitHubToken.from_raw("github-secret-token")
+    )
 
     assert fake_client.tokens == ["github-secret-token"]
     assert response.model_dump() == {
@@ -106,7 +112,10 @@ def test_list_tree_maps_directory_entries_without_content():
     fake_client = FakeGitHubClient()
 
     response = GitHubService(client=fake_client).list_tree(
-        token="github-secret-token", repo_id="123", path="src", ref="main"
+        token=GitHubToken.from_raw("github-secret-token"),
+        repo_id="123",
+        path="src",
+        ref="main",
     )
 
     assert fake_client.tokens == ["github-secret-token", "github-secret-token"]
@@ -125,7 +134,10 @@ def test_fetch_file_delegates_to_single_selected_file_content():
     fake_client = FakeGitHubClient()
 
     response = GitHubService(client=fake_client).fetch_file(
-        token="github-secret-token", repo_id="123", path="src/example.py", ref="main"
+        token=GitHubToken.from_raw("github-secret-token"),
+        repo_id="123",
+        path="src/example.py",
+        ref="main",
     )
 
     assert fake_client.tokens == ["github-secret-token", "github-secret-token"]
@@ -136,10 +148,22 @@ def test_fetch_file_delegates_to_single_selected_file_content():
 
 
 def test_extract_bearer_token_accepts_authorization_header():
-    assert extract_bearer_token("Bearer github-secret-token") == "github-secret-token"
+    token = extract_bearer_token("Bearer github-secret-token")
+
+    assert token is not None
+    assert token.get_secret_value() == "github-secret-token"
 
 
 @pytest.mark.parametrize("authorization", ["Basic abc", "Bearer ", "token"])
 def test_extract_bearer_token_rejects_unsupported_headers(authorization):
     with pytest.raises(ValueError, match="Authorization bearer token"):
         extract_bearer_token(authorization)
+
+
+def test_github_token_masks_string_representations_and_redacts_text():
+    token = GitHubToken.from_raw("github-secret-token")
+
+    assert "github-secret-token" not in repr(token)
+    assert "github-secret-token" not in str(token)
+    assert token.redact("upstream echoed github-secret-token") == "upstream echoed [redacted]"
+    assert redact_secret("upstream echoed github-secret-token", token) == "upstream echoed [redacted]"
