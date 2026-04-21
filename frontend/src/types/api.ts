@@ -42,6 +42,20 @@ export type ProviderHealthItem = {
   } | null;
 };
 
+export type SubmitCodeSource = "upload" | "paste" | "github";
+
+export type SubmitCodeRequest = {
+  source: SubmitCodeSource;
+  filename?: string | null;
+  code: string;
+};
+
+export type SubmitCodeResponse = {
+  submission_id: string;
+  candidate_count: number;
+  status: string;
+};
+
 export type Candidate = {
   id: string;
   title: string;
