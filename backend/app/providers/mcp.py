@@ -96,7 +96,7 @@ class McpProvider(ModelProvider):
 
     def _list_tool_names(self) -> set[str]:
         response = self._json_rpc("tools/list", {})
-        result = self._result(response)
+        result = self._result(response, method="tools/list")
         tools = result.get("tools")
         if not isinstance(tools, list):
             raise McpProviderError(
@@ -129,11 +129,11 @@ class McpProvider(ModelProvider):
             },
             mcp_name=tool_name,
         )
-        result = self._result(response)
+        result = self._result(response, method="tools/call")
         if result.get("isError") is True:
             raise McpProviderError(
                 "tool_error",
-                f"MCP tool '{tool_name}' reported an error.",
+                f"MCP tool '{tool_name}' reported an error: {self._tool_error_summary(result)}",
             )
 
         structured_content = result.get("structuredContent")
@@ -178,7 +178,7 @@ class McpProvider(ModelProvider):
                 raw_body = response.read().decode("utf-8")
         except urllib_error.HTTPError as exc:
             raise McpProviderError(
-                "http_error",
+                f"http_{exc.code}",
                 f"MCP server returned HTTP {exc.code} for {method}.",
             ) from exc
         except urllib_error.URLError as exc:
@@ -202,17 +202,18 @@ class McpProvider(ModelProvider):
             )
         if parsed.get("id") != request_id:
             raise McpProviderError(
-                "invalid_response",
+                "response_id_mismatch",
                 f"MCP server returned a mismatched response id for {method}.",
             )
         return parsed
 
     @staticmethod
-    def _result(response: dict) -> dict:
+    def _result(response: dict, *, method: str) -> dict:
         if "error" in response:
+            detail = McpProvider._json_rpc_error_detail(response["error"], method)
             raise McpProviderError(
                 "json_rpc_error",
-                "MCP server returned a JSON-RPC error response.",
+                detail,
             )
 
         result = response.get("result")
@@ -222,6 +223,25 @@ class McpProvider(ModelProvider):
                 "MCP response did not include a result object.",
             )
         return result
+
+    @staticmethod
+    def _json_rpc_error_detail(error_payload, method: str) -> str:
+        if not isinstance(error_payload, dict):
+            return f"MCP server returned a JSON-RPC error response for {method}."
+
+        code = error_payload.get("code")
+        message = error_payload.get("message")
+        if isinstance(code, int) and isinstance(message, str) and message.strip():
+            return (
+                f"MCP server returned JSON-RPC error {code} for {method}: "
+                f"{McpProvider._single_line(message)}"
+            )
+        if isinstance(message, str) and message.strip():
+            return (
+                f"MCP server returned a JSON-RPC error for {method}: "
+                f"{McpProvider._single_line(message)}"
+            )
+        return f"MCP server returned a JSON-RPC error response for {method}."
 
     @staticmethod
     def _content_text(result: dict) -> str:
@@ -246,6 +266,20 @@ class McpProvider(ModelProvider):
                 "MCP tool response did not include text content.",
             )
         return joined
+
+    @staticmethod
+    def _tool_error_summary(result: dict) -> str:
+        try:
+            return McpProvider._single_line(McpProvider._content_text(result))
+        except McpProviderError:
+            return "no diagnostic content was returned."
+
+    @staticmethod
+    def _single_line(value: str, *, limit: int = 160) -> str:
+        summary = " ".join(value.split())
+        if len(summary) > limit:
+            return f"{summary[:limit].rstrip()}..."
+        return summary
 
     @staticmethod
     def _parse_json_object(raw_response: str, tool_name: str) -> dict:
