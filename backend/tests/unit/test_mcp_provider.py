@@ -1,4 +1,5 @@
 import json
+from urllib import error as urllib_error
 
 import pytest
 
@@ -229,3 +230,79 @@ def test_mcp_generation_rejects_invalid_text_json_tool_content(monkeypatch):
 
     with pytest.raises(mcp_module.McpProviderError, match="valid JSON"):
         provider.generateHints(make_hint_input())
+
+
+def test_mcp_health_maps_http_failures(monkeypatch):
+    configure_mcp()
+    provider = McpProvider()
+
+    def fake_urlopen(request, timeout):
+        raise urllib_error.HTTPError(
+            request.full_url,
+            503,
+            "Service Unavailable",
+            hdrs=None,
+            fp=None,
+        )
+
+    monkeypatch.setattr(mcp_module.urllib_request, "urlopen", fake_urlopen)
+
+    health = provider.healthCheck()
+
+    assert health.status == "unavailable"
+    assert health.failure is not None
+    assert health.failure.code == "http_503"
+    assert health.failure.detail == "MCP server returned HTTP 503 for tools/list."
+
+
+def test_mcp_health_maps_json_rpc_errors(monkeypatch):
+    configure_mcp()
+    provider = McpProvider()
+
+    def fake_urlopen(request, timeout):
+        body = json.loads(request.data.decode("utf-8"))
+        return FakeResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": body["id"],
+                "error": {"code": -32601, "message": "Unknown method"},
+            }
+        )
+
+    monkeypatch.setattr(mcp_module.urllib_request, "urlopen", fake_urlopen)
+
+    health = provider.healthCheck()
+
+    assert health.status == "unavailable"
+    assert health.failure is not None
+    assert health.failure.code == "json_rpc_error"
+    assert health.failure.detail == (
+        "MCP server returned JSON-RPC error -32601 for tools/list: Unknown method"
+    )
+
+
+def test_mcp_generation_maps_tool_errors(monkeypatch):
+    configure_mcp()
+    provider = McpProvider()
+
+    def fake_urlopen(request, timeout):
+        body = json.loads(request.data.decode("utf-8"))
+        return FakeResponse(
+            json_rpc_response(
+                body,
+                {
+                    "isError": True,
+                    "content": [{"type": "text", "text": "Tool refused this request."}],
+                },
+            )
+        )
+
+    monkeypatch.setattr(mcp_module.urllib_request, "urlopen", fake_urlopen)
+
+    with pytest.raises(mcp_module.McpProviderError) as exc_info:
+        provider.generateHints(make_hint_input())
+
+    assert exc_info.value.code == "tool_error"
+    assert exc_info.value.detail == (
+        f"MCP tool '{provider.hint_tool}' reported an error: Tool refused this request."
+    )
