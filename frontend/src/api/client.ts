@@ -1,5 +1,6 @@
 import type {
   Candidate,
+  Exercise,
   GitHubConnectResponse,
   GitHubImportResponse,
   GitHubRepo,
@@ -92,4 +93,10 @@ export async function listCandidates(submissionId: string): Promise<Candidate[]>
   const query = new URLSearchParams({ submission_id: submissionId });
   const payload = await requestJson<{ candidates: Candidate[] }>(`/candidates?${query.toString()}`);
   return payload.candidates;
+}
+
+export async function createExercise(candidateId: string): Promise<Exercise> {
+  return requestJson<Exercise>(`/exercise/${encodeURIComponent(candidateId)}`, {
+    method: "POST",
+  });
 }
