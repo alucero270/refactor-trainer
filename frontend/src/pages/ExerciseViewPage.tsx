@@ -1,15 +1,17 @@
 import { FormEvent, useState } from "react";
 
-import { createExercise } from "../api/client";
+import { createExercise, submitAttempt } from "../api/client";
 import { MonacoEditorPanel } from "../components/MonacoEditorPanel";
 import { SectionCard } from "../components/SectionCard";
-import type { Exercise } from "../types/api";
+import type { AttemptFeedbackResponse, Exercise } from "../types/api";
 
 export function ExerciseViewPage() {
   const [candidateId, setCandidateId] = useState("");
   const [exercise, setExercise] = useState<Exercise | null>(null);
   const [editorCode, setEditorCode] = useState("");
+  const [feedback, setFeedback] = useState<AttemptFeedbackResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [submittingAttempt, setSubmittingAttempt] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -28,11 +30,32 @@ export function ExerciseViewPage() {
       const generated = await createExercise(normalizedCandidateId);
       setExercise(generated);
       setEditorCode("");
+      setFeedback(null);
     } catch (error) {
       setExercise(null);
+      setFeedback(null);
       setError(error instanceof Error ? error.message : "Exercise could not be generated.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleAttemptSubmit() {
+    if (!exercise) {
+      setError("Create an exercise before submitting an attempt.");
+      return;
+    }
+
+    setSubmittingAttempt(true);
+    setError(null);
+    setFeedback(null);
+
+    try {
+      setFeedback(await submitAttempt(exercise.exercise_id, editorCode));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Attempt could not be submitted.");
+    } finally {
+      setSubmittingAttempt(false);
     }
   }
 
@@ -70,6 +93,24 @@ export function ExerciseViewPage() {
             onChange={setEditorCode}
           />
         </div>
+      ) : null}
+      {exercise ? (
+        <SectionCard title="Attempt Submission" eyebrow="Deterministic feedback">
+          <div className="stack">
+            <button className="primary-button" disabled={submittingAttempt} type="button" onClick={() => void handleAttemptSubmit()}>
+              {submittingAttempt ? "Submitting..." : "Submit attempt"}
+            </button>
+            {feedback ? (
+              <div className={feedback.accepted ? "feedback-box accepted" : "feedback-box rejected"}>
+                <strong>{feedback.accepted ? "Pass" : "Fail"}</strong>
+                <p>{feedback.feedback}</p>
+                <p className="muted">
+                  Feedback for exercise <code>{feedback.exercise_id}</code>
+                </p>
+              </div>
+            ) : null}
+          </div>
+        </SectionCard>
       ) : null}
       {error ? (
         <SectionCard title="Exercise Error" eyebrow="Validation">
