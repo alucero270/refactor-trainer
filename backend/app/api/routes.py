@@ -22,7 +22,12 @@ from app.schemas.api import (
 )
 from app.services.candidate_service import CandidateService
 from app.services.exercise_service import ExerciseService
-from app.services.github_service import GitHubConnectionError, GitHubService, extract_bearer_token
+from app.services.github_service import (
+    GitHubApiError,
+    GitHubConnectionError,
+    GitHubService,
+    extract_bearer_token,
+)
 from app.services.provider_service import ProviderService
 from app.storage.memory import app_state
 
@@ -115,23 +120,34 @@ def github_connect(authorization: str | None = Header(default=None)) -> GitHubCo
 
 
 @router.get("/github/repos", response_model=GitHubReposResponse)
-def github_repos() -> GitHubReposResponse:
-    return GitHubReposResponse(
-        repos=[
-            {"id": "demo-repo", "name": "demo-repo", "owner": "placeholder"},
-        ]
-    )
+def github_repos(authorization: str | None = Header(default=None)) -> GitHubReposResponse:
+    try:
+        token = _require_github_token(authorization)
+        return github_service.list_repositories(token)
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except GitHubConnectionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except GitHubApiError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
 @router.get("/github/repo/{repo_id}/tree", response_model=GitHubRepoTreeResponse)
-def github_repo_tree(repo_id: str) -> GitHubRepoTreeResponse:
-    return GitHubRepoTreeResponse(
-        repo_id=repo_id,
-        tree=[
-            {"path": "src/example.py", "type": "blob"},
-            {"path": "README.md", "type": "blob"},
-        ],
-    )
+def github_repo_tree(
+    repo_id: str,
+    authorization: str | None = Header(default=None),
+    path: str = Query(default=""),
+    ref: str | None = Query(default=None),
+) -> GitHubRepoTreeResponse:
+    try:
+        token = _require_github_token(authorization)
+        return github_service.list_tree(token=token, repo_id=repo_id, path=path, ref=ref)
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except GitHubConnectionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except GitHubApiError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
 @router.post("/github/import-file", response_model=GitHubImportResponse)
@@ -145,3 +161,10 @@ def github_import_file(payload: GitHubImportRequest) -> GitHubImportResponse:
         content="# placeholder imported Python file\n",
         status="stub",
     )
+
+
+def _require_github_token(authorization: str | None) -> str:
+    token = extract_bearer_token(authorization)
+    if token is None:
+        raise ValueError("GitHub bearer token is required for targeted import browsing.")
+    return token

@@ -177,9 +177,6 @@ def test_github_routes_smoke(client):
         "single_file_import",
     ]
 
-    assert client.get("/github/repos").status_code == 200
-    assert client.get("/github/repo/demo/tree").status_code == 200
-
     import_response = client.post(
         "/github/import-file",
         json={"repo_id": "demo", "path": "src/example.py", "ref": "main"},
@@ -192,3 +189,66 @@ def test_github_connect_rejects_non_bearer_authorization(client):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "GitHub connection requires an Authorization bearer token."
+
+
+def test_github_repo_browsing_routes_use_connection_token(client, monkeypatch):
+    from app.api import routes
+    from app.services.github_service import GitHubRepository, GitHubRepositoryRef, GitHubTreeEntry
+
+    class FakeGitHubClient:
+        def list_repositories(self, token: str) -> list[GitHubRepository]:
+            assert token == "github-secret-token"
+            return [GitHubRepository(id="123", name="trainer", owner="octocat")]
+
+        def get_authenticated_user(self, token: str):
+            raise AssertionError("repo browsing should not revalidate the account")
+
+        def get_repository(self, token: str, repo_id: str) -> GitHubRepositoryRef:
+            assert token == "github-secret-token"
+            assert repo_id == "123"
+            return GitHubRepositoryRef(owner="octocat", name="trainer", default_branch="main")
+
+        def list_directory(
+            self, token: str, repository: GitHubRepositoryRef, path: str, ref: str | None
+        ) -> list[GitHubTreeEntry]:
+            assert token == "github-secret-token"
+            assert repository.owner == "octocat"
+            assert path == "src"
+            assert ref == "main"
+            return [
+                GitHubTreeEntry(path="src/example.py", type="blob"),
+                GitHubTreeEntry(path="src/package", type="tree"),
+            ]
+
+    monkeypatch.setattr(routes.github_service, "client", FakeGitHubClient())
+
+    repos_response = client.get(
+        "/github/repos", headers={"Authorization": "Bearer github-secret-token"}
+    )
+    assert repos_response.status_code == 200
+    assert repos_response.json() == {
+        "repos": [{"id": "123", "name": "trainer", "owner": "octocat"}]
+    }
+    assert "github-secret-token" not in repos_response.text
+
+    tree_response = client.get(
+        "/github/repo/123/tree",
+        params={"path": "src", "ref": "main"},
+        headers={"Authorization": "Bearer github-secret-token"},
+    )
+    assert tree_response.status_code == 200
+    assert tree_response.json() == {
+        "repo_id": "123",
+        "tree": [
+            {"path": "src/example.py", "type": "blob"},
+            {"path": "src/package", "type": "tree"},
+        ],
+    }
+    assert "github-secret-token" not in tree_response.text
+
+
+def test_github_repo_browsing_requires_bearer_token(client):
+    response = client.get("/github/repos")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "GitHub bearer token is required for targeted import browsing."
