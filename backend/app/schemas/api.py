@@ -1,6 +1,7 @@
+from urllib.parse import urlparse
 from typing import Literal
 
-from pydantic import BaseModel, Field, SecretStr, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
 
 class HealthResponse(BaseModel):
@@ -94,6 +95,21 @@ class AnthropicProviderConfig(BaseModel):
 class McpProviderConfig(BaseModel):
     server_url: str | None = None
     model: str | None = None
+
+    @field_validator("server_url")
+    @classmethod
+    def validate_server_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        normalized = value.strip()
+        if not normalized:
+            return None
+
+        parsed = urlparse(normalized)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("mcp.server_url must be an absolute HTTP(S) URL")
+        return normalized
 
 
 class ProviderSettings(BaseModel):
