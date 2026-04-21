@@ -68,6 +68,46 @@ def test_exercise_service_blocks_hint_leakage():
         service.generate_hints(exercise.exercise_id)
 
 
+def test_exercise_service_blocks_unfenced_full_refactored_code_hint():
+    class FullCodeProvider(MockProvider):
+        def generateHints(self, payload):
+            class Result:
+                hint = (
+                    "def clarify_names(records, threshold):\n"
+                    "    running_total = 0\n"
+                    "    increment = threshold + 1\n"
+                    "    return running_total + increment"
+                )
+
+            return Result()
+
+    service, candidate_id = build_exercise_service(provider=FullCodeProvider())
+    exercise = service.create_exercise(candidate_id)
+
+    with pytest.raises(RuntimeError, match="Generated hint violated leakage guardrails."):
+        service.generate_hints(exercise.exercise_id)
+
+
+def test_exercise_service_blocks_full_solution_explanation_hint():
+    class FullSolutionProvider(MockProvider):
+        def generateHints(self, payload):
+            class Result:
+                hint = (
+                    "1. Rename process to clarify_names. "
+                    "2. Rename data to records. "
+                    "3. Rename value to threshold. "
+                    "4. Rename thing to increment."
+                )
+
+            return Result()
+
+    service, candidate_id = build_exercise_service(provider=FullSolutionProvider())
+    exercise = service.create_exercise(candidate_id)
+
+    with pytest.raises(RuntimeError, match="Generated hint violated leakage guardrails."):
+        service.generate_hints(exercise.exercise_id)
+
+
 def test_exercise_service_accepts_attempt_when_targeted_signal_improves():
     service, candidate_id = build_exercise_service()
     exercise = service.create_exercise(candidate_id)
