@@ -180,6 +180,13 @@ select {
   background: #ffffff;
 }
 
+textarea.code-input {
+  min-height: 320px;
+  resize: vertical;
+  font-family: "Consolas", "SFMono-Regular", monospace;
+  line-height: 1.45;
+}
+
 .status-strip {
   display: flex;
   align-items: center;

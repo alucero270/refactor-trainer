@@ -1,4 +1,10 @@
-import type { ProviderConfig, ProviderHealthItem, ProviderSummary } from "../types/api";
+import type {
+  ProviderConfig,
+  ProviderHealthItem,
+  ProviderSummary,
+  SubmitCodeRequest,
+  SubmitCodeResponse,
+} from "../types/api";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
@@ -46,4 +52,11 @@ export async function saveProviderConfig(config: ProviderConfig): Promise<Provid
 export async function getProviderHealth(): Promise<ProviderHealthItem[]> {
   const payload = await requestJson<{ providers: ProviderHealthItem[] }>("/provider/health");
   return payload.providers;
+}
+
+export async function submitCode(payload: SubmitCodeRequest): Promise<SubmitCodeResponse> {
+  return requestJson<SubmitCodeResponse>("/submit-code", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
