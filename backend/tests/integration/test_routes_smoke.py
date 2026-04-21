@@ -177,12 +177,6 @@ def test_github_routes_smoke(client):
         "single_file_import",
     ]
 
-    import_response = client.post(
-        "/github/import-file",
-        json={"repo_id": "demo", "path": "src/example.py", "ref": "main"},
-    )
-    assert import_response.status_code == 200
-
 
 def test_github_connect_rejects_non_bearer_authorization(client):
     response = client.get("/github/connect", headers={"Authorization": "Basic abc"})
@@ -193,7 +187,12 @@ def test_github_connect_rejects_non_bearer_authorization(client):
 
 def test_github_repo_browsing_routes_use_connection_token(client, monkeypatch):
     from app.api import routes
-    from app.services.github_service import GitHubRepository, GitHubRepositoryRef, GitHubTreeEntry
+    from app.services.github_service import (
+        GitHubFileContent,
+        GitHubRepository,
+        GitHubRepositoryRef,
+        GitHubTreeEntry,
+    )
 
     class FakeGitHubClient:
         def list_repositories(self, token: str) -> list[GitHubRepository]:
@@ -219,6 +218,11 @@ def test_github_repo_browsing_routes_use_connection_token(client, monkeypatch):
                 GitHubTreeEntry(path="src/example.py", type="blob"),
                 GitHubTreeEntry(path="src/package", type="tree"),
             ]
+
+        def get_file_content(
+            self, token: str, repository: GitHubRepositoryRef, path: str, ref: str | None
+        ) -> GitHubFileContent:
+            raise AssertionError("repo browsing should not fetch file content")
 
     monkeypatch.setattr(routes.github_service, "client", FakeGitHubClient())
 
@@ -252,3 +256,96 @@ def test_github_repo_browsing_requires_bearer_token(client):
 
     assert response.status_code == 401
     assert response.json()["detail"] == "GitHub bearer token is required for targeted import browsing."
+
+
+def test_github_import_file_routes_content_through_submit_code(client, monkeypatch):
+    from app.api import routes
+    from app.services.github_service import GitHubFileContent, GitHubRepositoryRef
+
+    class FakeGitHubClient:
+        def get_repository(self, token: str, repo_id: str) -> GitHubRepositoryRef:
+            assert token == "github-secret-token"
+            assert repo_id == "123"
+            return GitHubRepositoryRef(owner="octocat", name="trainer", default_branch="main")
+
+        def get_file_content(
+            self, token: str, repository: GitHubRepositoryRef, path: str, ref: str | None
+        ) -> GitHubFileContent:
+            assert token == "github-secret-token"
+            assert repository.owner == "octocat"
+            assert path == "src/example.py"
+            assert ref == "main"
+            return GitHubFileContent(
+                path="src/example.py",
+                content=(
+                    "def process(data, value):\n"
+                    "    total = 0\n"
+                    "    thing = value + 1\n"
+                    "    return total + thing\n"
+                ),
+            )
+
+        def get_authenticated_user(self, token: str):
+            raise AssertionError("import should not revalidate the account")
+
+        def list_repositories(self, token: str):
+            raise AssertionError("import should not list repositories")
+
+        def list_directory(self, token: str, repository: GitHubRepositoryRef, path: str, ref: str):
+            raise AssertionError("import should not browse trees")
+
+    monkeypatch.setattr(routes.github_service, "client", FakeGitHubClient())
+
+    import_response = client.post(
+        "/github/import-file",
+        json={"repo_id": "123", "path": "src/example.py", "ref": "main"},
+        headers={"Authorization": "Bearer github-secret-token"},
+    )
+
+    assert import_response.status_code == 200
+    body = import_response.json()
+    assert body["status"] == "imported"
+    assert body["path"] == "src/example.py"
+    assert body["candidate_count"] == 1
+    assert body["submission_id"].startswith("sub-")
+    assert "github-secret-token" not in import_response.text
+
+    submission = app_state.submissions[body["submission_id"]]
+    assert submission["source"] == "github"
+    assert submission["filename"] == "example.py"
+
+
+def test_github_import_file_preserves_submit_code_validation(client, monkeypatch):
+    from app.api import routes
+    from app.services.github_service import GitHubFileContent, GitHubRepositoryRef
+
+    class FakeGitHubClient:
+        def get_repository(self, token: str, repo_id: str) -> GitHubRepositoryRef:
+            return GitHubRepositoryRef(owner="octocat", name="trainer", default_branch="main")
+
+        def get_file_content(
+            self, token: str, repository: GitHubRepositoryRef, path: str, ref: str | None
+        ) -> GitHubFileContent:
+            return GitHubFileContent(path="src/broken.py", content="def broken(:\n")
+
+    monkeypatch.setattr(routes.github_service, "client", FakeGitHubClient())
+
+    response = client.post(
+        "/github/import-file",
+        json={"repo_id": "123", "path": "src/broken.py", "ref": "main"},
+        headers={"Authorization": "Bearer github-secret-token"},
+    )
+
+    assert response.status_code == 400
+    assert "Submitted code is not valid Python syntax" in response.json()["detail"]
+
+
+def test_github_import_file_rejects_non_python_selection(client):
+    response = client.post(
+        "/github/import-file",
+        json={"repo_id": "123", "path": "README.md", "ref": "main"},
+        headers={"Authorization": "Bearer github-secret-token"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Only single Python files are supported."

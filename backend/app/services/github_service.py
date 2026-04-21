@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import base64
 import json
 from typing import Protocol
 from urllib import parse as urllib_parse
@@ -59,6 +60,12 @@ class GitHubTreeEntry:
     type: str
 
 
+@dataclass(frozen=True)
+class GitHubFileContent:
+    path: str
+    content: str
+
+
 class GitHubClient(Protocol):
     def get_authenticated_user(self, token: str) -> GitHubUser:
         ...
@@ -72,6 +79,11 @@ class GitHubClient(Protocol):
     def list_directory(
         self, token: str, repository: GitHubRepositoryRef, path: str, ref: str | None
     ) -> list[GitHubTreeEntry]:
+        ...
+
+    def get_file_content(
+        self, token: str, repository: GitHubRepositoryRef, path: str, ref: str | None
+    ) -> GitHubFileContent:
         ...
 
 
@@ -156,6 +168,31 @@ class GitHubApiClient:
             )
         return [entry for entry in entries if entry.path]
 
+    def get_file_content(
+        self, token: str, repository: GitHubRepositoryRef, path: str, ref: str | None
+    ) -> GitHubFileContent:
+        clean_path = path.strip("/")
+        if not clean_path:
+            raise GitHubApiError(400, "GitHub import requires a file path.")
+
+        encoded_path = "/".join(urllib_parse.quote(part) for part in clean_path.split("/"))
+        endpoint = f"/repos/{repository.owner}/{repository.name}/contents/{encoded_path}"
+        data = self._request_json(token, endpoint, {"ref": ref or repository.default_branch})
+        if not isinstance(data, dict) or data.get("type") != "file":
+            raise GitHubApiError(400, "GitHub import requires one selected file.")
+
+        encoding = str(data.get("encoding", "")).lower()
+        encoded_content = str(data.get("content", ""))
+        if encoding != "base64" or not encoded_content:
+            raise GitHubApiError(400, "GitHub file content could not be decoded.")
+
+        try:
+            content = base64.b64decode(encoded_content, validate=False).decode("utf-8")
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise GitHubApiError(400, "GitHub file content could not be decoded.") from exc
+
+        return GitHubFileContent(path=str(data.get("path", clean_path)), content=content)
+
     def _request_json(
         self, token: str, endpoint: str, query: dict[str, str] | None = None
     ) -> object:
@@ -228,6 +265,10 @@ class GitHubService:
             repo_id=repo_id,
             tree=[GitHubTreeItem(path=entry.path, type=entry.type) for entry in entries],
         )
+
+    def fetch_file(self, token: str, repo_id: str, path: str, ref: str) -> GitHubFileContent:
+        repository = self.client.get_repository(token, repo_id)
+        return self.client.get_file_content(token, repository, path, ref)
 
 
 def extract_bearer_token(authorization: str | None) -> str | None:
