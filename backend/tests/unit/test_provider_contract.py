@@ -64,7 +64,6 @@ def test_model_provider_contract_is_abstract():
 @pytest.mark.parametrize(
     "provider_cls,expected_name",
     [
-        (OpenAIProvider, "openai"),
         (AnthropicProvider, "anthropic"),
         (McpProvider, "mcp"),
     ],
@@ -97,6 +96,22 @@ def test_provider_contract(provider_cls, expected_name):
     hint = provider.generateHints(make_hint_input())
     assert isinstance(hint, HintGenerationResult)
     assert "level 1" in hint.hint
+
+
+def test_openai_provider_contract_requires_byok_configuration():
+    provider = OpenAIProvider()
+
+    assert provider.name() == "openai"
+    assert provider.healthCheck() == ProviderHealth(
+        provider="openai",
+        status="unavailable",
+        available=False,
+        message="OpenAI is unavailable.",
+        failure=ProviderFailure(
+            code="missing_api_key",
+            detail="OpenAI API key is required for BYOK provider access.",
+        ),
+    )
 
 
 def test_mock_provider_contract_is_deterministic():
