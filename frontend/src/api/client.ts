@@ -1,4 +1,5 @@
 import type {
+  Candidate,
   GitHubConnectResponse,
   GitHubImportResponse,
   GitHubRepo,
@@ -85,4 +86,10 @@ export async function importGitHubFile(repoId: string, path: string, ref = "HEAD
     method: "POST",
     body: JSON.stringify({ repo_id: repoId, path, ref }),
   });
+}
+
+export async function listCandidates(submissionId: string): Promise<Candidate[]> {
+  const query = new URLSearchParams({ submission_id: submissionId });
+  const payload = await requestJson<{ candidates: Candidate[] }>(`/candidates?${query.toString()}`);
+  return payload.candidates;
 }
