@@ -64,7 +64,6 @@ def test_model_provider_contract_is_abstract():
 @pytest.mark.parametrize(
     "provider_cls,expected_name",
     [
-        (AnthropicProvider, "anthropic"),
         (McpProvider, "mcp"),
     ],
 )
@@ -110,6 +109,22 @@ def test_openai_provider_contract_requires_byok_configuration():
         failure=ProviderFailure(
             code="missing_api_key",
             detail="OpenAI API key is required for BYOK provider access.",
+        ),
+    )
+
+
+def test_anthropic_provider_contract_requires_byok_configuration():
+    provider = AnthropicProvider()
+
+    assert provider.name() == "anthropic"
+    assert provider.healthCheck() == ProviderHealth(
+        provider="anthropic",
+        status="unavailable",
+        available=False,
+        message="Anthropic is unavailable.",
+        failure=ProviderFailure(
+            code="missing_api_key",
+            detail="Anthropic API key is required for BYOK provider access.",
         ),
     )
 
