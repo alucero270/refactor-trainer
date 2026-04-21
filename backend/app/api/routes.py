@@ -25,6 +25,7 @@ from app.services.exercise_service import ExerciseService
 from app.services.github_service import GitHubConnectionError, GitHubService, extract_bearer_token
 from app.services.provider_service import ProviderService
 from app.storage.memory import app_state
+from app.storage.provider_config import ProviderConfigStorageError, save_provider_config
 
 router = APIRouter()
 
@@ -94,6 +95,10 @@ def get_provider_config() -> ProviderConfigResponse:
 
 @router.put("/provider/config", response_model=ProviderConfigResponse)
 def update_provider_config(payload: ProviderConfigPayload) -> ProviderConfigResponse:
+    try:
+        save_provider_config(payload.config)
+    except ProviderConfigStorageError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     app_state.provider_config = payload.config
     return ProviderConfigResponse(config=app_state.provider_config)
 
