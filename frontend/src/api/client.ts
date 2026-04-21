@@ -1,5 +1,6 @@
 import type {
   Candidate,
+  AttemptFeedbackResponse,
   Exercise,
   GitHubConnectResponse,
   GitHubImportResponse,
@@ -98,5 +99,12 @@ export async function listCandidates(submissionId: string): Promise<Candidate[]>
 export async function createExercise(candidateId: string): Promise<Exercise> {
   return requestJson<Exercise>(`/exercise/${encodeURIComponent(candidateId)}`, {
     method: "POST",
+  });
+}
+
+export async function submitAttempt(exerciseId: string, attemptCode: string): Promise<AttemptFeedbackResponse> {
+  return requestJson<AttemptFeedbackResponse>(`/submit-attempt/${encodeURIComponent(exerciseId)}`, {
+    method: "POST",
+    body: JSON.stringify({ attempt_code: attemptCode }),
   });
 }

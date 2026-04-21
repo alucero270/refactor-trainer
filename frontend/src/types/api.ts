@@ -108,3 +108,10 @@ export type HintBundle = {
   guidance_summary: string;
   status: string;
 };
+
+export type AttemptFeedbackResponse = {
+  exercise_id: string;
+  accepted: boolean;
+  feedback: string;
+  status: string;
+};
