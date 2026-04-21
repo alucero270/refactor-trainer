@@ -96,8 +96,9 @@ export type Candidate = {
 export type Exercise = {
   exercise_id: string;
   candidate_id: string;
-  instructions: string;
-  guidance_summary: string;
+  title: string;
+  description: string;
+  difficulty: "Easy" | "Medium" | "Hard";
   status: string;
 };
 
