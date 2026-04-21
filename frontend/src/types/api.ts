@@ -56,6 +56,35 @@ export type SubmitCodeResponse = {
   status: string;
 };
 
+export type GitHubConnectResponse = {
+  status: "connected" | "not_connected";
+  auth_mode: "bearer_token";
+  required_permissions: string[];
+  capabilities: string[];
+  account: {
+    login: string;
+  } | null;
+  message: string;
+};
+
+export type GitHubRepo = {
+  id: string;
+  name: string;
+  owner: string;
+};
+
+export type GitHubTreeItem = {
+  path: string;
+  type: string;
+};
+
+export type GitHubImportResponse = {
+  repo_id: string;
+  path: string;
+  content: string;
+  status: string;
+};
+
 export type Candidate = {
   id: string;
   title: string;

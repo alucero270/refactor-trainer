@@ -1,4 +1,8 @@
 import type {
+  GitHubConnectResponse,
+  GitHubImportResponse,
+  GitHubRepo,
+  GitHubTreeItem,
   ProviderConfig,
   ProviderHealthItem,
   ProviderSummary,
@@ -58,5 +62,27 @@ export async function submitCode(payload: SubmitCodeRequest): Promise<SubmitCode
   return requestJson<SubmitCodeResponse>("/submit-code", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export async function getGitHubConnection(token: string): Promise<GitHubConnectResponse> {
+  const headers = token.trim() ? { Authorization: `Bearer ${token.trim()}` } : undefined;
+  return requestJson<GitHubConnectResponse>("/github/connect", { headers });
+}
+
+export async function listGitHubRepos(): Promise<GitHubRepo[]> {
+  const payload = await requestJson<{ repos: GitHubRepo[] }>("/github/repos");
+  return payload.repos;
+}
+
+export async function getGitHubRepoTree(repoId: string): Promise<GitHubTreeItem[]> {
+  const payload = await requestJson<{ tree: GitHubTreeItem[] }>(`/github/repo/${encodeURIComponent(repoId)}/tree`);
+  return payload.tree;
+}
+
+export async function importGitHubFile(repoId: string, path: string, ref = "HEAD"): Promise<GitHubImportResponse> {
+  return requestJson<GitHubImportResponse>("/github/import-file", {
+    method: "POST",
+    body: JSON.stringify({ repo_id: repoId, path, ref }),
   });
 }
