@@ -168,7 +168,15 @@ def test_provider_routes_smoke(client, monkeypatch):
 
 
 def test_github_routes_smoke(client):
-    assert client.get("/github/connect").status_code == 200
+    connect_response = client.get("/github/connect")
+    assert connect_response.status_code == 200
+    assert connect_response.json()["status"] == "not_connected"
+    assert connect_response.json()["capabilities"] == [
+        "repository_browsing",
+        "file_tree_browsing",
+        "single_file_import",
+    ]
+
     assert client.get("/github/repos").status_code == 200
     assert client.get("/github/repo/demo/tree").status_code == 200
 
@@ -177,3 +185,10 @@ def test_github_routes_smoke(client):
         json={"repo_id": "demo", "path": "src/example.py", "ref": "main"},
     )
     assert import_response.status_code == 200
+
+
+def test_github_connect_rejects_non_bearer_authorization(client):
+    response = client.get("/github/connect", headers={"Authorization": "Basic abc"})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "GitHub connection requires an Authorization bearer token."

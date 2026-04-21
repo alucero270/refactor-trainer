@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 
 from app.guidance.local import LocalGuidanceRetriever
 from app.schemas.api import (
     AttemptFeedbackResponse,
     CandidateListResponse,
     ExerciseResponse,
+    GitHubConnectResponse,
     GitHubImportRequest,
     GitHubImportResponse,
     GitHubRepoTreeResponse,
@@ -21,6 +22,7 @@ from app.schemas.api import (
 )
 from app.services.candidate_service import CandidateService
 from app.services.exercise_service import ExerciseService
+from app.services.github_service import GitHubConnectionError, GitHubService, extract_bearer_token
 from app.services.provider_service import ProviderService
 from app.storage.memory import app_state
 
@@ -29,6 +31,7 @@ router = APIRouter()
 provider_service = ProviderService()
 candidate_service = CandidateService()
 exercise_service = ExerciseService(LocalGuidanceRetriever())
+github_service = GitHubService()
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -100,9 +103,15 @@ def provider_health() -> ProviderHealthResponse:
     return provider_service.health()
 
 
-@router.get("/github/connect")
-def github_connect() -> dict:
-    return {"status": "stub", "message": "GitHub OAuth flow is not implemented in this scaffold."}
+@router.get("/github/connect", response_model=GitHubConnectResponse)
+def github_connect(authorization: str | None = Header(default=None)) -> GitHubConnectResponse:
+    try:
+        token = extract_bearer_token(authorization)
+        return github_service.connection_status(token)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except GitHubConnectionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
 
 
 @router.get("/github/repos", response_model=GitHubReposResponse)
