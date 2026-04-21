@@ -1,6 +1,7 @@
 import pytest
 
 from app.services.github_service import (
+    GitHubFileContent,
     GitHubRepository,
     GitHubRepositoryRef,
     GitHubService,
@@ -43,6 +44,20 @@ class FakeGitHubClient:
             GitHubTreeEntry(path="src/example.py", type="blob"),
             GitHubTreeEntry(path="src/nested", type="tree"),
         ]
+
+    def get_file_content(
+        self, token: str, repository: GitHubRepositoryRef, path: str, ref: str | None
+    ) -> GitHubFileContent:
+        self.tokens.append(token)
+        assert repository == GitHubRepositoryRef(
+            owner="octocat", name="trainer", default_branch="main"
+        )
+        assert path == "src/example.py"
+        assert ref == "main"
+        return GitHubFileContent(
+            path="src/example.py",
+            content="def process(data, value):\n    thing = value + 1\n    return thing\n",
+        )
 
 
 def test_connection_status_without_token_describes_targeted_import_only():
@@ -104,6 +119,20 @@ def test_list_tree_maps_directory_entries_without_content():
     }
     assert "content" not in response.model_dump_json()
     assert "github-secret-token" not in response.model_dump_json()
+
+
+def test_fetch_file_delegates_to_single_selected_file_content():
+    fake_client = FakeGitHubClient()
+
+    response = GitHubService(client=fake_client).fetch_file(
+        token="github-secret-token", repo_id="123", path="src/example.py", ref="main"
+    )
+
+    assert fake_client.tokens == ["github-secret-token", "github-secret-token"]
+    assert response == GitHubFileContent(
+        path="src/example.py",
+        content="def process(data, value):\n    thing = value + 1\n    return thing\n",
+    )
 
 
 def test_extract_bearer_token_accepts_authorization_header():

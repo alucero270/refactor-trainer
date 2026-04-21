@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Header, HTTPException, Query
+from pathlib import PurePosixPath
 
 from app.guidance.local import LocalGuidanceRetriever
 from app.schemas.api import (
@@ -151,15 +152,41 @@ def github_repo_tree(
 
 
 @router.post("/github/import-file", response_model=GitHubImportResponse)
-def github_import_file(payload: GitHubImportRequest) -> GitHubImportResponse:
-    if not payload.path.endswith(".py"):
-        raise HTTPException(status_code=400, detail="Only single-file Python imports are scaffolded.")
+def github_import_file(
+    payload: GitHubImportRequest, authorization: str | None = Header(default=None)
+) -> GitHubImportResponse:
+    if not payload.path.lower().endswith(".py"):
+        raise HTTPException(status_code=400, detail="Only single Python files are supported.")
+
+    filename = PurePosixPath(payload.path).name
+    if not filename:
+        raise HTTPException(status_code=400, detail="GitHub import requires one selected file.")
+
+    try:
+        token = _require_github_token(authorization)
+        imported_file = github_service.fetch_file(
+            token=token,
+            repo_id=payload.repo_id,
+            path=payload.path,
+            ref=payload.ref,
+        )
+        submission = candidate_service.submit_code(
+            SubmitCodeRequest(source="github", filename=filename, code=imported_file.content)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except GitHubConnectionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except GitHubApiError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
     return GitHubImportResponse(
         repo_id=payload.repo_id,
-        path=payload.path,
-        content="# placeholder imported Python file\n",
-        status="stub",
+        path=imported_file.path,
+        content=imported_file.content,
+        submission_id=submission.submission_id,
+        candidate_count=submission.candidate_count,
+        status="imported",
     )
 
 

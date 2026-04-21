@@ -205,4 +205,6 @@ class GitHubImportResponse(BaseModel):
     repo_id: str
     path: str
     content: str
+    submission_id: str
+    candidate_count: int
     status: str
