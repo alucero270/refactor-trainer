@@ -6,6 +6,8 @@ from urllib import parse as urllib_parse
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
+from pydantic import SecretStr
+
 from app.schemas.api import (
     GitHubAccount,
     GitHubConnectResponse,
@@ -22,6 +24,31 @@ GITHUB_IMPORT_CAPABILITIES = [
     "file_tree_browsing",
     "single_file_import",
 ]
+REDACTED_SECRET = "[redacted]"
+
+
+@dataclass(frozen=True, repr=False)
+class GitHubToken:
+    value: SecretStr
+
+    @classmethod
+    def from_raw(cls, value: str) -> "GitHubToken":
+        return cls(value=SecretStr(value))
+
+    def get_secret_value(self) -> str:
+        return self.value.get_secret_value()
+
+    def redact(self, text: str) -> str:
+        secret = self.get_secret_value()
+        if not secret:
+            return text
+        return text.replace(secret, REDACTED_SECRET)
+
+    def __repr__(self) -> str:
+        return "GitHubToken(**********)"
+
+    def __str__(self) -> str:
+        return "**********"
 
 
 class GitHubConnectionError(RuntimeError):
@@ -67,22 +94,22 @@ class GitHubFileContent:
 
 
 class GitHubClient(Protocol):
-    def get_authenticated_user(self, token: str) -> GitHubUser:
+    def get_authenticated_user(self, token: GitHubToken) -> GitHubUser:
         ...
 
-    def list_repositories(self, token: str) -> list[GitHubRepository]:
+    def list_repositories(self, token: GitHubToken) -> list[GitHubRepository]:
         ...
 
-    def get_repository(self, token: str, repo_id: str) -> GitHubRepositoryRef:
+    def get_repository(self, token: GitHubToken, repo_id: str) -> GitHubRepositoryRef:
         ...
 
     def list_directory(
-        self, token: str, repository: GitHubRepositoryRef, path: str, ref: str | None
+        self, token: GitHubToken, repository: GitHubRepositoryRef, path: str, ref: str | None
     ) -> list[GitHubTreeEntry]:
         ...
 
     def get_file_content(
-        self, token: str, repository: GitHubRepositoryRef, path: str, ref: str | None
+        self, token: GitHubToken, repository: GitHubRepositoryRef, path: str, ref: str | None
     ) -> GitHubFileContent:
         ...
 
@@ -91,14 +118,14 @@ class GitHubApiClient:
     def __init__(self, base_url: str = "https://api.github.com") -> None:
         self.base_url = base_url.rstrip("/")
 
-    def get_authenticated_user(self, token: str) -> GitHubUser:
+    def get_authenticated_user(self, token: GitHubToken) -> GitHubUser:
         data = self._request_json(token, "/user")
         login = str(data.get("login", "")).strip()
         if not login:
             raise GitHubConnectionError("GitHub connection response was missing the account login.")
         return GitHubUser(login=login)
 
-    def list_repositories(self, token: str) -> list[GitHubRepository]:
+    def list_repositories(self, token: GitHubToken) -> list[GitHubRepository]:
         data = self._request_json(
             token,
             "/user/repos",
@@ -123,7 +150,7 @@ class GitHubApiClient:
             )
         return [repo for repo in repositories if repo.id and repo.name and repo.owner]
 
-    def get_repository(self, token: str, repo_id: str) -> GitHubRepositoryRef:
+    def get_repository(self, token: GitHubToken, repo_id: str) -> GitHubRepositoryRef:
         data = self._request_json(token, f"/repositories/{urllib_parse.quote(repo_id)}")
         owner = str(data.get("owner", {}).get("login", "")).strip()
         name = str(data.get("name", "")).strip()
@@ -137,7 +164,7 @@ class GitHubApiClient:
         )
 
     def list_directory(
-        self, token: str, repository: GitHubRepositoryRef, path: str, ref: str | None
+        self, token: GitHubToken, repository: GitHubRepositoryRef, path: str, ref: str | None
     ) -> list[GitHubTreeEntry]:
         clean_path = path.strip("/")
         encoded_path = "/".join(
@@ -169,7 +196,7 @@ class GitHubApiClient:
         return [entry for entry in entries if entry.path]
 
     def get_file_content(
-        self, token: str, repository: GitHubRepositoryRef, path: str, ref: str | None
+        self, token: GitHubToken, repository: GitHubRepositoryRef, path: str, ref: str | None
     ) -> GitHubFileContent:
         clean_path = path.strip("/")
         if not clean_path:
@@ -194,7 +221,7 @@ class GitHubApiClient:
         return GitHubFileContent(path=str(data.get("path", clean_path)), content=content)
 
     def _request_json(
-        self, token: str, endpoint: str, query: dict[str, str] | None = None
+        self, token: GitHubToken, endpoint: str, query: dict[str, str] | None = None
     ) -> object:
         url = f"{self.base_url}{endpoint}"
         if query:
@@ -216,10 +243,10 @@ class GitHubApiClient:
         return json.loads(payload)
 
     @staticmethod
-    def _headers(token: str) -> dict[str, str]:
+    def _headers(token: GitHubToken) -> dict[str, str]:
         return {
             "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {token}",
+            "Authorization": f"Bearer {token.get_secret_value()}",
             "User-Agent": "refactor-trainer-mvp",
             "X-GitHub-Api-Version": "2022-11-28",
         }
@@ -229,7 +256,7 @@ class GitHubService:
     def __init__(self, client: GitHubClient | None = None) -> None:
         self.client = client or GitHubApiClient()
 
-    def connection_status(self, token: str | None) -> GitHubConnectResponse:
+    def connection_status(self, token: GitHubToken | None) -> GitHubConnectResponse:
         if not token:
             return GitHubConnectResponse(
                 status="not_connected",
@@ -249,7 +276,7 @@ class GitHubService:
             message="GitHub targeted import is enabled for repository browsing and single-file import.",
         )
 
-    def list_repositories(self, token: str) -> GitHubReposResponse:
+    def list_repositories(self, token: GitHubToken) -> GitHubReposResponse:
         repos = [
             GitHubRepo(id=repo.id, name=repo.name, owner=repo.owner)
             for repo in self.client.list_repositories(token)
@@ -257,7 +284,7 @@ class GitHubService:
         return GitHubReposResponse(repos=repos)
 
     def list_tree(
-        self, token: str, repo_id: str, path: str = "", ref: str | None = None
+        self, token: GitHubToken, repo_id: str, path: str = "", ref: str | None = None
     ) -> GitHubRepoTreeResponse:
         repository = self.client.get_repository(token, repo_id)
         entries = self.client.list_directory(token, repository, path, ref)
@@ -266,12 +293,14 @@ class GitHubService:
             tree=[GitHubTreeItem(path=entry.path, type=entry.type) for entry in entries],
         )
 
-    def fetch_file(self, token: str, repo_id: str, path: str, ref: str) -> GitHubFileContent:
+    def fetch_file(
+        self, token: GitHubToken, repo_id: str, path: str, ref: str
+    ) -> GitHubFileContent:
         repository = self.client.get_repository(token, repo_id)
         return self.client.get_file_content(token, repository, path, ref)
 
 
-def extract_bearer_token(authorization: str | None) -> str | None:
+def extract_bearer_token(authorization: str | None) -> GitHubToken | None:
     if authorization is None or not authorization.strip():
         return None
 
@@ -279,4 +308,10 @@ def extract_bearer_token(authorization: str | None) -> str | None:
     if scheme.lower() != "bearer" or not value.strip():
         raise ValueError("GitHub connection requires an Authorization bearer token.")
 
-    return value.strip()
+    return GitHubToken.from_raw(value.strip())
+
+
+def redact_secret(text: str, token: GitHubToken | None) -> str:
+    if token is None:
+        return text
+    return token.redact(text)
