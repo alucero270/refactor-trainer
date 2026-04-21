@@ -4,17 +4,16 @@ from app.providers.anthropic import AnthropicProvider
 from app.providers.base import ModelProvider
 from app.providers.contracts import (
     CandidateClassificationInput,
-    CandidateClassificationResult,
     ExerciseGenerationInput,
-    ExerciseGenerationResult,
     HintGenerationInput,
-    HintGenerationResult,
     ProviderFailure,
     ProviderHealth,
 )
 from app.providers.mcp import McpProvider
 from app.providers.mock import MockProvider
 from app.providers.openai_provider import OpenAIProvider
+from app.schemas.api import ProviderConfig
+from app.storage.memory import app_state
 
 
 def make_classification_input() -> CandidateClassificationInput:
@@ -61,40 +60,13 @@ def test_model_provider_contract_is_abstract():
     }
 
 
-@pytest.mark.parametrize(
-    "provider_cls,expected_name",
-    [
-        (McpProvider, "mcp"),
-    ],
-)
-def test_provider_contract(provider_cls, expected_name):
-    provider = provider_cls()
-
-    assert provider.name() == expected_name
-    assert provider.healthCheck() == ProviderHealth(
-        provider=expected_name,
-        status="unavailable",
-        available=False,
-        message=provider.healthCheck().message,
-        failure=ProviderFailure(
-            code="not_implemented",
-            detail=provider.healthCheck().failure.detail,
-        ),
-    )
-
-    classification = provider.classifyCandidate(make_classification_input())
-    assert isinstance(classification, CandidateClassificationResult)
-    assert classification.label == "LongMethod"
-    assert classification.rationale
-
-    exercise = provider.generateExercise(make_exercise_input())
-    assert isinstance(exercise, ExerciseGenerationResult)
-    assert exercise.title == "Refactor LongMethod"
-    assert exercise.difficulty == "Medium"
-
-    hint = provider.generateHints(make_hint_input())
-    assert isinstance(hint, HintGenerationResult)
-    assert "level 1" in hint.hint
+@pytest.fixture(autouse=True)
+def restore_provider_config():
+    original = app_state.provider_config.model_copy(deep=True)
+    try:
+        yield
+    finally:
+        app_state.provider_config = original
 
 
 def test_openai_provider_contract_requires_byok_configuration():
@@ -125,6 +97,23 @@ def test_anthropic_provider_contract_requires_byok_configuration():
         failure=ProviderFailure(
             code="missing_api_key",
             detail="Anthropic API key is required for BYOK provider access.",
+        ),
+    )
+
+
+def test_mcp_provider_contract_requires_server_url_configuration():
+    provider = McpProvider()
+    app_state.provider_config = ProviderConfig()
+
+    assert provider.name() == "mcp"
+    assert provider.healthCheck() == ProviderHealth(
+        provider="mcp",
+        status="unavailable",
+        available=False,
+        message="MCP provider is unavailable.",
+        failure=ProviderFailure(
+            code="missing_server_url",
+            detail="MCP server_url is required for provider access.",
         ),
     )
 

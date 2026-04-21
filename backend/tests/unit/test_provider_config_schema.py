@@ -46,6 +46,34 @@ def test_provider_config_requires_mcp_server_url_when_configured():
         )
 
 
+def test_provider_config_rejects_invalid_mcp_server_url_when_configured():
+    with pytest.raises(ValidationError, match=r"mcp.server_url must be an absolute HTTP\(S\) URL"):
+        ProviderConfig(
+            default_provider="mcp",
+            configured_providers=["ollama", "mcp"],
+            providers={"mcp": {"server_url": "localhost:8001/mcp"}},
+        )
+
+
+def test_provider_config_normalizes_blank_mcp_server_url_to_missing():
+    with pytest.raises(ValidationError, match="mcp.server_url is required"):
+        ProviderConfig(
+            default_provider="mcp",
+            configured_providers=["ollama", "mcp"],
+            providers={"mcp": {"server_url": "   "}},
+        )
+
+
+def test_provider_config_accepts_absolute_mcp_server_url():
+    config = ProviderConfig(
+        default_provider="mcp",
+        configured_providers=["ollama", "mcp"],
+        providers={"mcp": {"server_url": " https://localhost:8001/mcp "}},
+    )
+
+    assert config.providers.mcp.server_url == "https://localhost:8001/mcp"
+
+
 def test_provider_config_accepts_byok_and_mcp_settings():
     config = ProviderConfig(
         default_provider="openai",
