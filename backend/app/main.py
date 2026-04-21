@@ -1,9 +1,12 @@
+import logging
+
 from fastapi import FastAPI
 
 from app.api.routes import router
 
 
 def create_app() -> FastAPI:
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     app = FastAPI(
         title="Refactor Trainer",
         description="Initial backend scaffold for Refactor Trainer.",
@@ -14,4 +17,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-

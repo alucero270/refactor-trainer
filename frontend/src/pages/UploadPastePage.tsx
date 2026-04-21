@@ -1,7 +1,9 @@
 import { ChangeEvent, FormEvent, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { submitCode } from "../api/client";
 import { SectionCard } from "../components/SectionCard";
+import { useWorkflowState } from "../providers/WorkflowStateProvider";
 import type { SubmitCodeResponse } from "../types/api";
 
 const sampleCode = `def summarize(items):
@@ -13,6 +15,8 @@ const sampleCode = `def summarize(items):
 `;
 
 export function UploadPastePage() {
+  const navigate = useNavigate();
+  const workflow = useWorkflowState();
   const [pasteCode, setPasteCode] = useState(sampleCode);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [result, setResult] = useState<SubmitCodeResponse | null>(null);
@@ -52,7 +56,10 @@ export function UploadPastePage() {
     setError(null);
 
     try {
-      setResult(await submitCode({ source, filename, code }));
+      const submission = await submitCode({ source, filename, code });
+      workflow.setSubmission(submission);
+      setResult(submission);
+      navigate("/candidates");
     } catch (error) {
       setError(error instanceof Error ? error.message : "Code could not be submitted.");
     } finally {

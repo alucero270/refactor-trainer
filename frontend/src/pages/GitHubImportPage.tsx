@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import {
   getGitHubConnection,
@@ -8,9 +9,12 @@ import {
   submitCode,
 } from "../api/client";
 import { SectionCard } from "../components/SectionCard";
+import { useWorkflowState } from "../providers/WorkflowStateProvider";
 import type { GitHubConnectResponse, GitHubRepo, GitHubTreeItem, SubmitCodeResponse } from "../types/api";
 
 export function GitHubImportPage() {
+  const navigate = useNavigate();
+  const workflow = useWorkflowState();
   const [token, setToken] = useState("");
   const [connection, setConnection] = useState<GitHubConnectResponse | null>(null);
   const [repos, setRepos] = useState<GitHubRepo[]>([]);
@@ -111,7 +115,10 @@ export function GitHubImportPage() {
     try {
       const imported = await importGitHubFile(repoId, selectedPath, ref);
       const filename = imported.path.split("/").pop() ?? "github-import.py";
-      setSubmission(await submitCode({ source: "github", filename, code: imported.content }));
+      const acceptedSubmission = await submitCode({ source: "github", filename, code: imported.content });
+      workflow.setSubmission(acceptedSubmission);
+      setSubmission(acceptedSubmission);
+      navigate("/candidates");
     } catch (error) {
       setError(error instanceof Error ? error.message : "GitHub file could not be imported.");
     } finally {

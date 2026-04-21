@@ -40,6 +40,11 @@ def test_submit_code_and_candidates_smoke(client):
         }
     ]
 
+    metrics_response = client.get("/metrics")
+    assert metrics_response.status_code == 200
+    assert metrics_response.json()["counters"]["submit_code.accepted"] == 1
+    assert metrics_response.json()["counters"]["candidates.listed"] == 1
+
 
 def test_submit_code_rejects_non_python_or_multi_file_shapes(client):
     invalid_extension = client.post(

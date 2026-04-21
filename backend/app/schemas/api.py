@@ -10,6 +10,10 @@ class HealthResponse(BaseModel):
     scaffold: bool
 
 
+class MetricsResponse(BaseModel):
+    counters: dict[str, int]
+
+
 class SubmitCodeRequest(BaseModel):
     source: Literal["upload", "paste", "github"] = "paste"
     filename: str | None = None

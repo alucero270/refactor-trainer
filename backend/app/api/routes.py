@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Header, HTTPException, Query
 
+from app.diagnostics import log_event, metrics
 from app.guidance.local import LocalGuidanceRetriever
 from app.schemas.api import (
     AttemptFeedbackResponse,
@@ -12,6 +13,7 @@ from app.schemas.api import (
     GitHubReposResponse,
     HealthResponse,
     HintResponse,
+    MetricsResponse,
     ProviderConfigPayload,
     ProviderConfigResponse,
     ProviderHealthResponse,
@@ -40,36 +42,78 @@ def health() -> HealthResponse:
     return HealthResponse(status="ok", app="refactor-trainer", scaffold=True)
 
 
+@router.get("/metrics", response_model=MetricsResponse)
+def get_metrics() -> MetricsResponse:
+    return MetricsResponse(counters=metrics.snapshot())
+
+
 @router.post("/submit-code", response_model=SubmitCodeResponse)
 def submit_code(payload: SubmitCodeRequest) -> SubmitCodeResponse:
     try:
-        return candidate_service.submit_code(payload)
+        response = candidate_service.submit_code(payload)
+        metrics.increment("submit_code.accepted")
+        log_event(
+            "submit_code.accepted",
+            source=payload.source,
+            filename=payload.filename,
+            submission_id=response.submission_id,
+            candidate_count=response.candidate_count,
+        )
+        return response
     except ValueError as exc:
+        metrics.increment("submit_code.rejected")
+        log_event("submit_code.rejected", source=payload.source, filename=payload.filename)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/candidates", response_model=CandidateListResponse)
 def list_candidates(submission_id: str = Query(...)) -> CandidateListResponse:
-    return candidate_service.list_candidates(submission_id)
+    response = candidate_service.list_candidates(submission_id)
+    metrics.increment("candidates.listed")
+    log_event(
+        "candidates.listed",
+        submission_id=submission_id,
+        candidate_count=len(response.candidates),
+    )
+    return response
 
 
 @router.post("/exercise/{candidate_id}", response_model=ExerciseResponse)
 def create_exercise(candidate_id: str) -> ExerciseResponse:
     try:
-        return exercise_service.create_exercise(candidate_id)
+        response = exercise_service.create_exercise(candidate_id)
+        metrics.increment("exercise.generated")
+        log_event(
+            "exercise.generated",
+            candidate_id=candidate_id,
+            exercise_id=response.exercise_id,
+            difficulty=response.difficulty,
+        )
+        return response
     except LookupError as exc:
+        metrics.increment("exercise.failed")
+        log_event("exercise.failed", candidate_id=candidate_id, failure="not_found")
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
+        metrics.increment("exercise.failed")
+        log_event("exercise.failed", candidate_id=candidate_id, failure="provider_error")
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.get("/hints/{exercise_id}", response_model=HintResponse)
 def get_hints(exercise_id: str) -> HintResponse:
     try:
-        return exercise_service.generate_hints(exercise_id)
+        response = exercise_service.generate_hints(exercise_id)
+        metrics.increment("hints.generated")
+        log_event("hints.generated", exercise_id=exercise_id, hint_count=len(response.hints))
+        return response
     except LookupError as exc:
+        metrics.increment("hints.failed")
+        log_event("hints.failed", exercise_id=exercise_id, failure="not_found")
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
+        metrics.increment("hints.failed")
+        log_event("hints.failed", exercise_id=exercise_id, failure="provider_error")
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
@@ -78,8 +122,17 @@ def submit_attempt(
     exercise_id: str, payload: SubmitAttemptRequest
 ) -> AttemptFeedbackResponse:
     try:
-        return exercise_service.submit_attempt(exercise_id, payload)
+        response = exercise_service.submit_attempt(exercise_id, payload)
+        metrics.increment("attempt.evaluated")
+        log_event(
+            "attempt.evaluated",
+            exercise_id=exercise_id,
+            accepted=response.accepted,
+        )
+        return response
     except LookupError as exc:
+        metrics.increment("attempt.failed")
+        log_event("attempt.failed", exercise_id=exercise_id, failure="not_found")
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
@@ -100,6 +153,12 @@ def update_provider_config(payload: ProviderConfigPayload) -> ProviderConfigResp
     except ProviderConfigStorageError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     app_state.provider_config = payload.config
+    metrics.increment("provider_config.updated")
+    log_event(
+        "provider_config.updated",
+        default_provider=payload.config.default_provider,
+        configured_providers=payload.config.configured_providers,
+    )
     return ProviderConfigResponse(config=app_state.provider_config)
 
 
@@ -112,7 +171,10 @@ def provider_health() -> ProviderHealthResponse:
 def github_connect(authorization: str | None = Header(default=None)) -> GitHubConnectResponse:
     try:
         token = extract_bearer_token(authorization)
-        return github_service.connection_status(token)
+        response = github_service.connection_status(token)
+        metrics.increment("github.connect.checked")
+        log_event("github.connect.checked", status=response.status)
+        return response
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except GitHubConnectionError as exc:
@@ -142,11 +204,16 @@ def github_repo_tree(repo_id: str) -> GitHubRepoTreeResponse:
 @router.post("/github/import-file", response_model=GitHubImportResponse)
 def github_import_file(payload: GitHubImportRequest) -> GitHubImportResponse:
     if not payload.path.endswith(".py"):
+        metrics.increment("github.import.rejected")
+        log_event("github.import.rejected", repo_id=payload.repo_id, path=payload.path)
         raise HTTPException(status_code=400, detail="Only single-file Python imports are scaffolded.")
 
-    return GitHubImportResponse(
+    response = GitHubImportResponse(
         repo_id=payload.repo_id,
         path=payload.path,
         content="# placeholder imported Python file\n",
         status="stub",
     )
+    metrics.increment("github.import.accepted")
+    log_event("github.import.accepted", repo_id=payload.repo_id, path=payload.path)
+    return response
