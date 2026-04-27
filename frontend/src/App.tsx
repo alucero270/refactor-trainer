@@ -45,8 +45,11 @@ export default function App() {
         <Route path="/upload" element={<UploadPastePage />} />
         <Route path="/github" element={<GitHubImportPage />} />
         <Route path="/candidates" element={<CandidateListPage />} />
+        <Route path="/candidates/:submissionId" element={<CandidateListPage />} />
         <Route path="/exercise" element={<ExerciseViewPage />} />
+        <Route path="/exercise/:candidateId" element={<ExerciseViewPage />} />
         <Route path="/feedback" element={<AttemptFeedbackPage />} />
+        <Route path="/feedback/:exerciseId" element={<AttemptFeedbackPage />} />
       </Routes>
     </Layout>
   );

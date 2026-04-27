@@ -35,8 +35,11 @@ export function GitHubImportPage() {
     let cancelled = false;
 
     async function loadRepos() {
+      if (connection?.status !== "connected" || !token.trim()) {
+        return;
+      }
       try {
-        const repoList = await listGitHubRepos();
+        const repoList = await listGitHubRepos(token);
         if (!cancelled) {
           setRepos(repoList);
           if (repoList.length > 0) {
@@ -55,19 +58,19 @@ export function GitHubImportPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [connection?.status, token]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadTree() {
-      if (!repoId) {
+      if (!repoId || connection?.status !== "connected" || !token.trim()) {
         setTree([]);
         return;
       }
 
       try {
-        const repoTree = await getGitHubRepoTree(repoId);
+        const repoTree = await getGitHubRepoTree(token, repoId, ref || "HEAD");
         if (!cancelled) {
           setTree(repoTree);
           setSelectedPath("");
@@ -84,7 +87,7 @@ export function GitHubImportPage() {
     return () => {
       cancelled = true;
     };
-  }, [repoId]);
+  }, [repoId, ref, connection?.status, token]);
 
   async function handleConnect(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -113,12 +116,12 @@ export function GitHubImportPage() {
     setError(null);
 
     try {
-      const imported = await importGitHubFile(repoId, selectedPath, ref);
+      const imported = await importGitHubFile(token, repoId, selectedPath, ref);
       const filename = imported.path.split("/").pop() ?? "github-import.py";
       const acceptedSubmission = await submitCode({ source: "github", filename, code: imported.content });
       workflow.setSubmission(acceptedSubmission);
       setSubmission(acceptedSubmission);
-      navigate("/candidates");
+      navigate(`/candidates/${encodeURIComponent(acceptedSubmission.submission_id)}`);
     } catch (error) {
       setError(error instanceof Error ? error.message : "GitHub file could not be imported.");
     } finally {

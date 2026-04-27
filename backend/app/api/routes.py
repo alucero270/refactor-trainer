@@ -24,7 +24,13 @@ from app.schemas.api import (
 )
 from app.services.candidate_service import CandidateService
 from app.services.exercise_service import ExerciseService
-from app.services.github_service import GitHubConnectionError, GitHubService, extract_bearer_token
+from app.services.github_service import (
+    GitHubConnectionError,
+    GitHubRequestError,
+    GitHubService,
+    extract_bearer_token,
+    require_bearer_token,
+)
 from app.services.provider_service import ProviderService
 from app.storage.memory import app_state
 from app.storage.provider_config import ProviderConfigStorageError, save_provider_config
@@ -182,38 +188,57 @@ def github_connect(authorization: str | None = Header(default=None)) -> GitHubCo
 
 
 @router.get("/github/repos", response_model=GitHubReposResponse)
-def github_repos() -> GitHubReposResponse:
-    return GitHubReposResponse(
-        repos=[
-            {"id": "demo-repo", "name": "demo-repo", "owner": "placeholder"},
-        ]
-    )
+def github_repos(authorization: str | None = Header(default=None)) -> GitHubReposResponse:
+    try:
+        token = require_bearer_token(authorization)
+        repos = github_service.list_repos(token)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except GitHubConnectionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except GitHubRequestError as exc:
+        raise HTTPException(status_code=exc.status or 502, detail=exc.detail) from exc
+    metrics.increment("github.repos.listed")
+    log_event("github.repos.listed", repo_count=len(repos))
+    return GitHubReposResponse(repos=repos)
 
 
-@router.get("/github/repo/{repo_id}/tree", response_model=GitHubRepoTreeResponse)
-def github_repo_tree(repo_id: str) -> GitHubRepoTreeResponse:
-    return GitHubRepoTreeResponse(
-        repo_id=repo_id,
-        tree=[
-            {"path": "src/example.py", "type": "blob"},
-            {"path": "README.md", "type": "blob"},
-        ],
-    )
+@router.get("/github/repo/tree", response_model=GitHubRepoTreeResponse)
+def github_repo_tree(
+    repo_id: str = Query(...),
+    ref: str = Query(default="HEAD"),
+    authorization: str | None = Header(default=None),
+) -> GitHubRepoTreeResponse:
+    try:
+        token = require_bearer_token(authorization)
+        tree = github_service.get_tree(token, repo_id, ref)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except GitHubConnectionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except GitHubRequestError as exc:
+        raise HTTPException(status_code=exc.status or 502, detail=exc.detail) from exc
+    metrics.increment("github.tree.listed")
+    log_event("github.tree.listed", repo_id=repo_id, entry_count=len(tree))
+    return GitHubRepoTreeResponse(repo_id=repo_id, tree=tree)
 
 
 @router.post("/github/import-file", response_model=GitHubImportResponse)
-def github_import_file(payload: GitHubImportRequest) -> GitHubImportResponse:
-    if not payload.path.endswith(".py"):
+def github_import_file(
+    payload: GitHubImportRequest,
+    authorization: str | None = Header(default=None),
+) -> GitHubImportResponse:
+    try:
+        token = require_bearer_token(authorization)
+        response = github_service.import_file(token, payload.repo_id, payload.path, payload.ref)
+    except ValueError as exc:
         metrics.increment("github.import.rejected")
         log_event("github.import.rejected", repo_id=payload.repo_id, path=payload.path)
-        raise HTTPException(status_code=400, detail="Only single-file Python imports are scaffolded.")
-
-    response = GitHubImportResponse(
-        repo_id=payload.repo_id,
-        path=payload.path,
-        content="# placeholder imported Python file\n",
-        status="stub",
-    )
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except GitHubConnectionError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except GitHubRequestError as exc:
+        raise HTTPException(status_code=exc.status or 502, detail=exc.detail) from exc
     metrics.increment("github.import.accepted")
     log_event("github.import.accepted", repo_id=payload.repo_id, path=payload.path)
     return response

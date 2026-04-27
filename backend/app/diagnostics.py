@@ -1,11 +1,14 @@
 import json
 import logging
+import os
 from collections import Counter
 from threading import Lock
 from typing import Any
 
 
 logger = logging.getLogger("refactor_trainer.mvp")
+
+DIAGNOSTICS_ENABLED_ENV = "REFACTOR_TRAINER_DIAGNOSTICS"
 
 _SECRET_FIELD_MARKERS = ("api_key", "authorization", "secret", "token")
 _ALLOWED_METRICS = {
@@ -17,12 +20,19 @@ _ALLOWED_METRICS = {
     "github.connect.checked",
     "github.import.accepted",
     "github.import.rejected",
+    "github.repos.listed",
+    "github.tree.listed",
     "hints.failed",
     "hints.generated",
     "provider_config.updated",
     "submit_code.accepted",
     "submit_code.rejected",
 }
+
+
+def _diagnostics_enabled() -> bool:
+    raw = os.environ.get(DIAGNOSTICS_ENABLED_ENV, "1").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
 
 
 class BoundedMetrics:
@@ -34,6 +44,8 @@ class BoundedMetrics:
     def increment(self, name: str) -> None:
         if name not in self._allowed_names:
             raise ValueError(f"Metric '{name}' is not registered.")
+        if not _diagnostics_enabled():
+            return
         with self._lock:
             self._counters[name] += 1
 
@@ -50,6 +62,8 @@ metrics = BoundedMetrics(_ALLOWED_METRICS)
 
 
 def log_event(event: str, **fields: Any) -> None:
+    if not _diagnostics_enabled():
+        return
     safe_fields = {key: _sanitize_field(key, value) for key, value in fields.items()}
     logger.info(json.dumps({"event": event, **safe_fields}, sort_keys=True))
 

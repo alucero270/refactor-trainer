@@ -14,14 +14,15 @@ class CandidateService:
         filename = self._normalize_filename(payload)
         normalized_code = self._normalize_code(payload.code)
         detected_candidates = self.detector.detect(normalized_code)
-        app_state.submissions[submission_id] = {
-            "source": payload.source,
-            "code": normalized_code,
-            "filename": filename,
-            "candidates": [],
-            "detected_candidates": [candidate.model_dump() for candidate in detected_candidates],
-            "language": "python",
-        }
+        with app_state.lock:
+            app_state.submissions[submission_id] = {
+                "source": payload.source,
+                "code": normalized_code,
+                "filename": filename,
+                "candidates": [],
+                "detected_candidates": [candidate.model_dump() for candidate in detected_candidates],
+                "language": "python",
+            }
         return SubmitCodeResponse(
             submission_id=submission_id,
             candidate_count=len(detected_candidates),
@@ -29,15 +30,16 @@ class CandidateService:
         )
 
     def list_candidates(self, submission_id: str) -> CandidateListResponse:
-        submission = app_state.submissions.get(submission_id)
-        if not submission:
-            return CandidateListResponse(submission_id=submission_id, candidates=[])
+        with app_state.lock:
+            submission = app_state.submissions.get(submission_id)
+            if not submission:
+                return CandidateListResponse(submission_id=submission_id, candidates=[])
 
-        public_candidates = [
-            Candidate.model_validate(candidate)
-            for candidate in submission.get("detected_candidates", [])
-        ]
-        submission["candidates"] = [candidate.model_dump() for candidate in public_candidates]
+            public_candidates = [
+                Candidate.model_validate(candidate)
+                for candidate in submission.get("detected_candidates", [])
+            ]
+            submission["candidates"] = [candidate.model_dump() for candidate in public_candidates]
 
         return CandidateListResponse(
             submission_id=submission_id,

@@ -59,7 +59,7 @@ export function UploadPastePage() {
       const submission = await submitCode({ source, filename, code });
       workflow.setSubmission(submission);
       setResult(submission);
-      navigate("/candidates");
+      navigate(`/candidates/${encodeURIComponent(submission.submission_id)}`);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Code could not be submitted.");
     } finally {

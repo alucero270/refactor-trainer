@@ -179,24 +179,69 @@ def test_provider_routes_smoke(client, monkeypatch, provider_config_path):
     assert health_response.json()["providers"][0]["failure"] is None
 
 
-def test_github_routes_smoke(client):
+def test_github_routes_require_bearer_token(client):
     connect_response = client.get("/github/connect")
     assert connect_response.status_code == 200
     assert connect_response.json()["status"] == "not_connected"
-    assert connect_response.json()["capabilities"] == [
-        "repository_browsing",
-        "file_tree_browsing",
-        "single_file_import",
+
+    assert client.get("/github/repos").status_code == 400
+    assert (
+        client.get("/github/repo/tree", params={"repo_id": "octocat/hello-world"}).status_code == 400
+    )
+    assert (
+        client.post(
+            "/github/import-file",
+            json={"repo_id": "octocat/hello-world", "path": "src/example.py", "ref": "main"},
+        ).status_code
+        == 400
+    )
+
+
+def test_github_routes_end_to_end_with_fake_client(client, monkeypatch):
+    from app.api import routes
+    from app.services.github_service import (
+        GitHubFileContent,
+        GitHubRepoSummary,
+        GitHubService,
+        GitHubTreeEntry,
+    )
+    from tests.unit.test_github_service import FakeGitHubClient
+
+    fake_client = FakeGitHubClient(
+        repos=[GitHubRepoSummary(owner="octocat", name="hello-world")],
+        default_branch="main",
+        tree=[
+            GitHubTreeEntry(path="src/example.py", type="blob"),
+            GitHubTreeEntry(path="README.md", type="blob"),
+        ],
+        file_content=GitHubFileContent(path="src/example.py", content="print('hi')\n"),
+    )
+    monkeypatch.setattr(routes, "github_service", GitHubService(client=fake_client))
+
+    headers = {"Authorization": "Bearer live-token"}
+
+    repos_response = client.get("/github/repos", headers=headers)
+    assert repos_response.status_code == 200
+    assert repos_response.json()["repos"] == [
+        {"id": "octocat/hello-world", "owner": "octocat", "name": "hello-world"}
     ]
 
-    assert client.get("/github/repos").status_code == 200
-    assert client.get("/github/repo/demo/tree").status_code == 200
+    tree_response = client.get(
+        "/github/repo/tree",
+        params={"repo_id": "octocat/hello-world", "ref": "HEAD"},
+        headers=headers,
+    )
+    assert tree_response.status_code == 200
+    assert tree_response.json()["tree"] == [{"path": "src/example.py", "type": "blob"}]
 
     import_response = client.post(
         "/github/import-file",
-        json={"repo_id": "demo", "path": "src/example.py", "ref": "main"},
+        json={"repo_id": "octocat/hello-world", "path": "src/example.py", "ref": "HEAD"},
+        headers=headers,
     )
     assert import_response.status_code == 200
+    assert import_response.json()["status"] == "imported"
+    assert import_response.json()["content"] == "print('hi')\n"
 
 
 def test_github_connect_rejects_non_bearer_authorization(client):
