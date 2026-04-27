@@ -32,7 +32,7 @@ class AnthropicProvider(ModelProvider):
     supports_local = False
     anthropic_version = "2023-06-01"
     default_base_url = "https://api.anthropic.com/v1"
-    default_model = "claude-sonnet-4-20250514"
+    default_model = "claude-sonnet-4-6"
 
     def name(self) -> str:
         return "anthropic"

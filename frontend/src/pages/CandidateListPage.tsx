@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { listCandidates } from "../api/client";
 import { SectionCard } from "../components/SectionCard";
@@ -9,18 +9,22 @@ import type { Candidate } from "../types/api";
 export function CandidateListPage() {
   const navigate = useNavigate();
   const workflow = useWorkflowState();
-  const [submissionId, setSubmissionId] = useState(workflow.submission?.submission_id ?? "");
+  const params = useParams<{ submissionId?: string }>();
+  const initialSubmissionId =
+    workflow.submission?.submission_id ?? params.submissionId ?? "";
+  const [submissionId, setSubmissionId] = useState(initialSubmissionId);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (workflow.submission?.submission_id) {
-      setSubmissionId(workflow.submission.submission_id);
+    const activeId = workflow.submission?.submission_id ?? params.submissionId ?? "";
+    if (activeId) {
+      setSubmissionId(activeId);
       if (workflow.candidates.length === 0) {
-        void loadCandidates(workflow.submission.submission_id);
+        void loadCandidates(activeId);
       }
     }
-  }, [workflow.submission?.submission_id]);
+  }, [workflow.submission?.submission_id, params.submissionId]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -97,7 +101,11 @@ export function CandidateListPage() {
             <p className="muted">
               Candidate id <code>{workflow.selectedCandidate.id}</code>
             </p>
-            <button className="primary-button" type="button" onClick={() => navigate("/exercise")}>
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() => navigate(`/exercise/${encodeURIComponent(workflow.selectedCandidate!.id)}`)}
+            >
               Continue to exercise
             </button>
           </div>

@@ -1,18 +1,27 @@
 import { FormEvent, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
-import { createExercise, submitAttempt } from "../api/client";
+import { createExercise, getHints, submitAttempt } from "../api/client";
 import { MonacoEditorPanel } from "../components/MonacoEditorPanel";
 import { SectionCard } from "../components/SectionCard";
 import { useWorkflowState } from "../providers/WorkflowStateProvider";
 
+const MAX_HINTS = 2;
+
 export function ExerciseViewPage() {
   const navigate = useNavigate();
+  const params = useParams<{ candidateId?: string }>();
   const workflow = useWorkflowState();
-  const [candidateId, setCandidateId] = useState(workflow.selectedCandidate?.id ?? "");
+  const [candidateId, setCandidateId] = useState(
+    workflow.selectedCandidate?.id ?? params.candidateId ?? "",
+  );
   const [loading, setLoading] = useState(false);
   const [submittingAttempt, setSubmittingAttempt] = useState(false);
+  const [revealingHint, setRevealingHint] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const revealedHintCount = workflow.hints?.hints.length ?? 0;
+  const hintsExhausted = revealedHintCount >= MAX_HINTS;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -36,6 +45,27 @@ export function ExerciseViewPage() {
     }
   }
 
+  async function handleRevealHint() {
+    if (!workflow.exercise) {
+      setError("Create an exercise before revealing hints.");
+      return;
+    }
+    if (hintsExhausted) {
+      return;
+    }
+
+    setRevealingHint(true);
+    setError(null);
+
+    try {
+      workflow.setHints(await getHints(workflow.exercise.exercise_id));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Hint could not be revealed.");
+    } finally {
+      setRevealingHint(false);
+    }
+  }
+
   async function handleAttemptSubmit() {
     if (!workflow.exercise) {
       setError("Create an exercise before submitting an attempt.");
@@ -47,7 +77,7 @@ export function ExerciseViewPage() {
 
     try {
       workflow.setFeedback(await submitAttempt(workflow.exercise.exercise_id, workflow.editorCode));
-      navigate("/feedback");
+      navigate(`/feedback/${encodeURIComponent(workflow.exercise.exercise_id)}`);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Attempt could not be submitted.");
     } finally {
@@ -93,6 +123,41 @@ export function ExerciseViewPage() {
             onChange={workflow.setEditorCode}
           />
         </div>
+      ) : null}
+      {workflow.exercise ? (
+        <SectionCard
+          title="Progressive Hints"
+          eyebrow={`Revealed ${revealedHintCount} of ${MAX_HINTS}`}
+        >
+          <div className="stack">
+            <button
+              className="secondary-button"
+              disabled={revealingHint || hintsExhausted}
+              type="button"
+              onClick={() => void handleRevealHint()}
+            >
+              {hintsExhausted
+                ? "All hints revealed"
+                : revealingHint
+                  ? "Revealing..."
+                  : revealedHintCount === 0
+                    ? "Reveal first hint"
+                    : "Reveal next hint"}
+            </button>
+            {workflow.hints && workflow.hints.hints.length > 0 ? (
+              <ol className="hint-list">
+                {workflow.hints.hints.map((hint, index) => (
+                  <li key={index}>{hint}</li>
+                ))}
+              </ol>
+            ) : (
+              <p className="muted">Hints are progressive and reveal one at a time. Try solving first.</p>
+            )}
+            {workflow.hints?.guidance_summary ? (
+              <p className="muted">Guidance: {workflow.hints.guidance_summary}</p>
+            ) : null}
+          </div>
+        </SectionCard>
       ) : null}
       {workflow.exercise ? (
         <SectionCard title="Attempt Submission" eyebrow="Deterministic feedback">

@@ -1,7 +1,13 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useState } from "react";
 import type { PropsWithChildren } from "react";
 
-import type { AttemptFeedbackResponse, Candidate, Exercise, SubmitCodeResponse } from "../types/api";
+import type {
+  AttemptFeedbackResponse,
+  Candidate,
+  Exercise,
+  HintBundle,
+  SubmitCodeResponse,
+} from "../types/api";
 
 type WorkflowState = {
   submission: SubmitCodeResponse | null;
@@ -9,6 +15,7 @@ type WorkflowState = {
   selectedCandidate: Candidate | null;
   exercise: Exercise | null;
   editorCode: string;
+  hints: HintBundle | null;
   feedback: AttemptFeedbackResponse | null;
 };
 
@@ -18,6 +25,7 @@ type WorkflowStateContextValue = WorkflowState & {
   selectCandidate: (candidate: Candidate) => void;
   setExercise: (exercise: Exercise) => void;
   setEditorCode: (code: string) => void;
+  setHints: (hints: HintBundle) => void;
   setFeedback: (feedback: AttemptFeedbackResponse) => void;
 };
 
@@ -29,61 +37,63 @@ const initialState: WorkflowState = {
   selectedCandidate: null,
   exercise: null,
   editorCode: "",
+  hints: null,
   feedback: null,
 };
 
 export function WorkflowStateProvider({ children }: PropsWithChildren) {
   const [state, setState] = useState<WorkflowState>(initialState);
 
-  const value = useMemo<WorkflowStateContextValue>(
-    () => ({
-      ...state,
-      setSubmission: (submission) =>
-        setState({
-          submission,
-          candidates: [],
-          selectedCandidate: null,
-          exercise: null,
-          editorCode: "",
-          feedback: null,
-        }),
-      setCandidates: (candidates) =>
-        setState((current) => ({
-          ...current,
-          candidates,
-          selectedCandidate: null,
-          exercise: null,
-          editorCode: "",
-          feedback: null,
-        })),
-      selectCandidate: (candidate) =>
-        setState((current) => ({
-          ...current,
-          selectedCandidate: candidate,
-          exercise: null,
-          editorCode: "",
-          feedback: null,
-        })),
-      setExercise: (exercise) =>
-        setState((current) => ({
-          ...current,
-          exercise,
-          editorCode: "",
-          feedback: null,
-        })),
-      setEditorCode: (editorCode) =>
-        setState((current) => ({
-          ...current,
-          editorCode,
-        })),
-      setFeedback: (feedback) =>
-        setState((current) => ({
-          ...current,
-          feedback,
-        })),
-    }),
-    [state],
-  );
+  const setSubmission = (submission: SubmitCodeResponse) =>
+    setState((current) =>
+      current.submission?.submission_id === submission.submission_id
+        ? { ...current, submission }
+        : { ...initialState, submission },
+    );
+
+  const setCandidates = (candidates: Candidate[]) =>
+    setState((current) => ({ ...current, candidates }));
+
+  const selectCandidate = (candidate: Candidate) =>
+    setState((current) =>
+      current.selectedCandidate?.id === candidate.id
+        ? { ...current, selectedCandidate: candidate }
+        : {
+            ...current,
+            selectedCandidate: candidate,
+            exercise: null,
+            editorCode: "",
+            hints: null,
+            feedback: null,
+          },
+    );
+
+  const setExercise = (exercise: Exercise) =>
+    setState((current) =>
+      current.exercise?.exercise_id === exercise.exercise_id
+        ? { ...current, exercise }
+        : { ...current, exercise, editorCode: "", hints: null, feedback: null },
+    );
+
+  const setEditorCode = (editorCode: string) =>
+    setState((current) => ({ ...current, editorCode }));
+
+  const setHints = (hints: HintBundle) =>
+    setState((current) => ({ ...current, hints }));
+
+  const setFeedback = (feedback: AttemptFeedbackResponse) =>
+    setState((current) => ({ ...current, feedback }));
+
+  const value: WorkflowStateContextValue = {
+    ...state,
+    setSubmission,
+    setCandidates,
+    selectCandidate,
+    setExercise,
+    setEditorCode,
+    setHints,
+    setFeedback,
+  };
 
   return <WorkflowStateContext.Provider value={value}>{children}</WorkflowStateContext.Provider>;
 }

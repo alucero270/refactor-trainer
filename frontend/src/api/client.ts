@@ -6,6 +6,7 @@ import type {
   GitHubImportResponse,
   GitHubRepo,
   GitHubTreeItem,
+  HintBundle,
   ProviderConfig,
   ProviderHealthItem,
   ProviderSummary,
@@ -13,7 +14,7 @@ import type {
   SubmitCodeResponse,
 } from "../types/api";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -73,19 +74,39 @@ export async function getGitHubConnection(token: string): Promise<GitHubConnectR
   return requestJson<GitHubConnectResponse>("/github/connect", { headers });
 }
 
-export async function listGitHubRepos(): Promise<GitHubRepo[]> {
-  const payload = await requestJson<{ repos: GitHubRepo[] }>("/github/repos");
+function bearer(token: string): HeadersInit {
+  return { Authorization: `Bearer ${token.trim()}` };
+}
+
+export async function listGitHubRepos(token: string): Promise<GitHubRepo[]> {
+  const payload = await requestJson<{ repos: GitHubRepo[] }>("/github/repos", {
+    headers: bearer(token),
+  });
   return payload.repos;
 }
 
-export async function getGitHubRepoTree(repoId: string): Promise<GitHubTreeItem[]> {
-  const payload = await requestJson<{ tree: GitHubTreeItem[] }>(`/github/repo/${encodeURIComponent(repoId)}/tree`);
+export async function getGitHubRepoTree(
+  token: string,
+  repoId: string,
+  ref = "HEAD",
+): Promise<GitHubTreeItem[]> {
+  const query = new URLSearchParams({ repo_id: repoId, ref });
+  const payload = await requestJson<{ tree: GitHubTreeItem[] }>(
+    `/github/repo/tree?${query.toString()}`,
+    { headers: bearer(token) },
+  );
   return payload.tree;
 }
 
-export async function importGitHubFile(repoId: string, path: string, ref = "HEAD"): Promise<GitHubImportResponse> {
+export async function importGitHubFile(
+  token: string,
+  repoId: string,
+  path: string,
+  ref = "HEAD",
+): Promise<GitHubImportResponse> {
   return requestJson<GitHubImportResponse>("/github/import-file", {
     method: "POST",
+    headers: bearer(token),
     body: JSON.stringify({ repo_id: repoId, path, ref }),
   });
 }
@@ -100,6 +121,10 @@ export async function createExercise(candidateId: string): Promise<Exercise> {
   return requestJson<Exercise>(`/exercise/${encodeURIComponent(candidateId)}`, {
     method: "POST",
   });
+}
+
+export async function getHints(exerciseId: string): Promise<HintBundle> {
+  return requestJson<HintBundle>(`/hints/${encodeURIComponent(exerciseId)}`);
 }
 
 export async function submitAttempt(exerciseId: string, attemptCode: string): Promise<AttemptFeedbackResponse> {

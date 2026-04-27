@@ -52,17 +52,18 @@ class ExerciseService:
             )
         )
         exercise_id = f"ex-{uuid4().hex[:8]}"
-        app_state.exercises[exercise_id] = {
-            "candidate_id": candidate_id,
-            "candidate_code": candidate["candidate_code"],
-            "candidate_region": candidate["candidate_region"],
-            "issue_label": classification.label,
-            "classification_rationale": classification.rationale,
-            "title": generated_exercise.title,
-            "description": generated_exercise.description,
-            "difficulty": generated_exercise.difficulty,
-            "revealed_hints": [],
-        }
+        with app_state.lock:
+            app_state.exercises[exercise_id] = {
+                "candidate_id": candidate_id,
+                "candidate_code": candidate["candidate_code"],
+                "candidate_region": candidate["candidate_region"],
+                "issue_label": classification.label,
+                "classification_rationale": classification.rationale,
+                "title": generated_exercise.title,
+                "description": generated_exercise.description,
+                "difficulty": generated_exercise.difficulty,
+                "revealed_hints": [],
+            }
         return ExerciseResponse(
             exercise_id=exercise_id,
             candidate_id=candidate_id,
@@ -73,7 +74,16 @@ class ExerciseService:
         )
 
     def generate_hints(self, exercise_id: str) -> HintResponse:
-        exercise = self._find_exercise(exercise_id)
+        with app_state.lock:
+            exercise = self._find_exercise(exercise_id)
+            exercise_snapshot = {
+                "title": exercise["title"],
+                "description": exercise["description"],
+                "candidate_code": exercise["candidate_code"],
+                "issue_label": exercise["issue_label"],
+            }
+            revealed_hints = list(exercise.get("revealed_hints", []))
+
         guidance = self._guidance_with_fallback(
             GuidanceRequest(
                 language="python",
@@ -82,26 +92,31 @@ class ExerciseService:
             )
         )
         guidance_summary = self._guidance_summary(guidance)
-        revealed_hints = list(exercise.get("revealed_hints", []))
 
         if len(revealed_hints) < 2:
             provider = self.provider_service.resolve_default_provider()
             next_level = len(revealed_hints) + 1
-            hint_guidance = self._hint_guidance(exercise["issue_label"])
+            hint_guidance = self._hint_guidance(exercise_snapshot["issue_label"])
             generated_hint = provider.generateHints(
                 HintGenerationInput(
                     language="python",
-                    exercise_title=exercise["title"],
-                    exercise_description=exercise["description"],
+                    exercise_title=exercise_snapshot["title"],
+                    exercise_description=exercise_snapshot["description"],
                     hint_level=next_level,
-                    candidate_code=exercise["candidate_code"],
-                    issue_label=exercise["issue_label"],
+                    candidate_code=exercise_snapshot["candidate_code"],
+                    issue_label=exercise_snapshot["issue_label"],
                     guidance_snippets=hint_guidance,
                 )
             )
-            sanitized_hint = self._validate_hint(generated_hint.hint, exercise["candidate_code"])
-            revealed_hints.append(sanitized_hint)
-            exercise["revealed_hints"] = revealed_hints
+            sanitized_hint = self._validate_hint(
+                generated_hint.hint, exercise_snapshot["candidate_code"]
+            )
+            with app_state.lock:
+                exercise = self._find_exercise(exercise_id)
+                revealed_hints = list(exercise.get("revealed_hints", []))
+                if len(revealed_hints) < 2:
+                    revealed_hints.append(sanitized_hint)
+                    exercise["revealed_hints"] = revealed_hints
 
         return HintResponse(
             exercise_id=exercise_id,
@@ -149,14 +164,17 @@ class ExerciseService:
 
     @staticmethod
     def _guidance_summary(guidance: list[GuidanceSnippet]) -> str:
+        if not guidance:
+            return "No guidance available."
         return guidance[0].summary
 
     @staticmethod
     def _find_candidate(candidate_id: str) -> dict:
-        for submission in app_state.submissions.values():
-            for candidate in submission.get("detected_candidates", []):
-                if candidate["id"] == candidate_id:
-                    return candidate
+        with app_state.lock:
+            for submission in app_state.submissions.values():
+                for candidate in submission.get("detected_candidates", []):
+                    if candidate["id"] == candidate_id:
+                        return candidate
         raise LookupError(f"Candidate '{candidate_id}' was not found.")
 
     @staticmethod
@@ -197,8 +215,14 @@ class ExerciseService:
         normalized = code.replace("\r\n", "\n").replace("\r", "\n").strip()
         return normalized
 
-    @staticmethod
-    def _issue_improved(*, issue_label: str, original_metrics, attempt_metrics) -> bool:
+    KNOWN_ISSUE_LABELS = frozenset({"PoorNaming", "LongMethod", "DeepNesting", "DuplicatedCode"})
+
+    @classmethod
+    def _issue_improved(cls, *, issue_label: str, original_metrics, attempt_metrics) -> bool:
+        if issue_label not in cls.KNOWN_ISSUE_LABELS:
+            raise ValueError(
+                f"Unknown issue_label '{issue_label}'. Exercise evaluator has no comparison rule for this smell."
+            )
         if issue_label == "PoorNaming":
             return len(attempt_metrics.poor_names) < len(original_metrics.poor_names)
         if issue_label == "LongMethod":
@@ -208,12 +232,10 @@ class ExerciseService:
             )
         if issue_label == "DeepNesting":
             return attempt_metrics.max_nesting < original_metrics.max_nesting
-        if issue_label == "DuplicatedCode":
-            return (
-                attempt_metrics.duplicate_statement_count
-                < original_metrics.duplicate_statement_count
-            )
-        return False
+        return (
+            attempt_metrics.duplicate_statement_count
+            < original_metrics.duplicate_statement_count
+        )
 
     @staticmethod
     def _attempt_feedback(issue_label: str, accepted: bool) -> str:

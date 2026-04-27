@@ -428,6 +428,21 @@ no hint solution leakage
 no secrets exposed
 
 
+6. End-to-End Feature Completeness
+
+If an issue is claimed to complete a user-facing feature (anything reachable from the UI or documented in api-spec.md as a user flow):
+
+the full frontend → backend path MUST be exercised before the PR is opened
+
+exercise it either by (a) an integration test that walks the real flow, or (b) a documented manual walkthrough included in the PR description
+
+a backend endpoint without a frontend caller, or a frontend page without a working backend, does NOT count as complete
+
+stub responses (hardcoded placeholders, "status: stub", "# placeholder ..." fixtures) are NEVER acceptable as shipped implementation — remove the endpoint or implement it
+
+scope the PR narrowly, but finish the vertical slice
+
+
 If ANY check fails:
 
 → stop execution
